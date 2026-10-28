@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { z } from 'zod'
 import type { Floor, PlanUploadTicket } from '../../src/types/api'
 import {
@@ -152,7 +151,3 @@ export default handler(async (req, params) => {
   if (req.method === 'DELETE') return deleteFloor(id)
   methodNotAllowed()
 })
-
-export const config: Config = {
-  path: ['/api/floors', '/api/floors/:id', '/api/floors/:id/plan-upload-url'],
-}

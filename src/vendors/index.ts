@@ -12,7 +12,7 @@ export interface VendorUi {
 
 /**
  * Browser-side pieces per vendor. Vendor ids must match the server registry
- * in netlify/vendors/index.ts, which owns names, capabilities and API logic.
+ * in server/vendors/index.ts, which owns names, capabilities and API logic.
  */
 export const VENDOR_UI: Record<string, VendorUi> = {
   keenon: { ConfigPage: KeenonConfig, RobotDetail: KeenonRobotDetail },

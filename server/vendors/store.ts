@@ -62,7 +62,7 @@ export function vendorStatus(adapter: VendorAdapter, config: VendorConfigRow | n
 
 /** Public URL vendors should call. `PUBLIC_SITE_URL` wins so local dev shows the live URL. */
 export function webhookUrl(vendor: string, token: string, req: Request): string {
-  const base = (process.env.PUBLIC_SITE_URL || process.env.URL || new URL(req.url).origin).replace(/\/+$/, '')
+  const base = (process.env.PUBLIC_SITE_URL || new URL(req.url).origin).replace(/\/+$/, '')
   return `${base}/api/vendors/${vendor}/webhook/${token}`
 }
 
@@ -125,8 +125,6 @@ export function headersForLog(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {}
   headers.forEach((value, key) => {
     const name = key.toLowerCase()
-    // Netlify's internal x-nf-* headers carry account/site/blob access details.
-    if (name.startsWith('x-nf-')) return
     out[key] = REDACTED_HEADERS.has(name) ? '[redacted]' : value
   })
   return out

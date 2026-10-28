@@ -1,0 +1,14 @@
+# Keep secrets, local state and build output out of the image build context.
+.env
+.env.*
+!.env.example
+*.local
+.git
+.github
+.netlify
+node_modules
+dist
+dist-server
+deploy
+deno.lock
+.DS_Store

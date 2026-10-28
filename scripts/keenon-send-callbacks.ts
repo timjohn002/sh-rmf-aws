@@ -6,8 +6,8 @@
 
 import { randomBytes } from 'node:crypto'
 import { parseArgs } from 'node:util'
-import { KEENON_CALLBACK_FIXTURES } from '../netlify/vendors/keenon/fixtures'
-import { computeKeenonSignature } from '../netlify/vendors/keenon/webhook'
+import { KEENON_CALLBACK_FIXTURES } from '../server/vendors/keenon/fixtures'
+import { computeKeenonSignature } from '../server/vendors/keenon/webhook'
 
 const { values } = parseArgs({
   options: {

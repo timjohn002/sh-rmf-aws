@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { z } from 'zod'
 import type { AppUser } from '../../src/types/api'
 import {
@@ -93,7 +92,3 @@ export default handler(async (req, params) => {
   if (req.method === 'DELETE') return deleteUser(me.id, id)
   methodNotAllowed()
 })
-
-export const config: Config = {
-  path: ['/api/users', '/api/users/:id', '/api/users/:id/password'],
-}

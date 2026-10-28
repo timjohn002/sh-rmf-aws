@@ -20,10 +20,12 @@ Door and elevator integration, and robot commands, come later.
 Browser (React + Vite SPA)
    │  fetch /api/*  (HttpOnly session cookie)
    ▼
-Netlify Functions  (netlify/functions)  ── service-role key ──▶  Supabase Postgres + Storage
+Node server in a container (server/)  ── service-role key ──▶  Supabase Postgres + Storage
+   serves the built SPA (dist/) and the API routes (server/api)
 ```
 
-- The browser **never** talks to Supabase with a key. All data goes through `/api/*` functions, which check the session and role.
+- The browser **never** talks to Supabase with a key. All data goes through the `/api/*` routes, which check the session and role.
+- One container image runs on **Red Hat OpenShift**: `server/main.ts` (Hono on Node 24) serves the web app and every API route listed in `server/routes.ts`. An hourly CronJob runs `server/jobs/maintenance.ts`.
 - Accounts live in the `app_users` table, with passwords hashed using **bcrypt**. Supabase Auth and email are not used.
 - Row-level security is enabled with no policies, so the public anon key can't read any table. The `floor-plans` storage bucket is private, and images are shown through 1-hour signed URLs.
 - Floor plan coordinates: each floor stores `scale_m_per_px` and an origin in pixels. World coordinates are in meters, with +Y pointing up (ROS / Open-RMF convention). See `src/lib/coords.ts`.
@@ -71,32 +73,52 @@ npm run create-user -- --username admin --reset          # forgot the admin pass
 
 ### 4. Run locally
 ```bash
-npm run dev          # http://localhost:8888  (Vite + Netlify Functions together)
+npm run dev          # http://localhost:5173  (Vite; /api is proxied to the API server on :8080)
 ```
+If port 5173 is busy, Vite picks the next free port and prints it. The API server restarts when you change files in `server/`.
 
-## Deploying (GitHub → Netlify)
-1. Push this repo to GitHub.
-2. In Netlify: **Add new site → Import an existing project → GitHub** and pick the repo. The build settings come from `netlify.toml`.
-3. Under **Site configuration → Environment variables**, add `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SESSION_SECRET` (the same values as `.env.local`).
-4. Deploy. Every push to the main branch redeploys.
+### Run the production build or container locally
+```bash
+npm run build
+node --env-file=.env.local dist-server/main.mjs   # http://localhost:8080 (in a container, `npm start` with env vars set)
+
+podman build -t starhub-rmf:dev .              # Red Hat UBI 9 + Node 24 image
+podman run --rm --env-file .env.local -p 8080:8080 starhub-rmf:dev
+```
+Health checks: `/healthz` (process is up) and `/readyz` (database reachable).
+
+## Deploying (OpenShift)
+Manifests are in `deploy/` (Kustomize): `deploy/base` is cluster-agnostic, and `deploy/overlays/dev` holds the environment-specific values.
+
+1. Build and push the image to the registry the cluster pulls from.
+2. In `deploy/overlays/dev/kustomization.yaml`, replace every `CHANGE-ME`: namespace, image, Route host and `PUBLIC_SITE_URL`.
+3. Copy `deploy/overlays/dev/secret.env.example` to `deploy/overlays/dev/.env.secret` (git-ignored) and fill in the same values as `.env.local`.
+4. `oc apply -k deploy/overlays/dev`
+
+This creates the Deployment (2 replicas), Service, Route (TLS at the router), the hourly maintenance CronJob, a PodDisruptionBudget and a NetworkPolicy. The container runs as a random non-root UID with a read-only filesystem.
+
+| Environment variable | Purpose |
+|---|---|
+| `PORT` | Listen port (default `8080`) |
+| `TRUST_PROXY=true` | Use `X-Forwarded-Proto`/`Host` from the OpenShift router, so cookies get `Secure` and the origin check sees the public URL. Only set it behind a trusted proxy. |
 
 ## Robot vendors
 Each vendor integration is code. There's one adapter folder per vendor, registered in a list:
 
 | Piece | Where |
 |---|---|
-| Adapter interface | `netlify/vendors/types.ts` |
-| Server registry | `netlify/vendors/index.ts` |
-| Keenon adapter (API client, callbacks, signature) | `netlify/vendors/keenon/` |
+| Adapter interface | `server/vendors/types.ts` |
+| Server registry | `server/vendors/index.ts` |
+| Keenon adapter (API client, callbacks, signature) | `server/vendors/keenon/` |
 | Config page per vendor | `src/vendors/index.ts` → `src/vendors/keenon/KeenonConfig.tsx` |
-| Map positions (robots on the Map page) | `VendorAdapter.mapPositions`, used by `netlify/vendors/mapRobots.ts` (`GET /api/map/robots`) |
+| Map positions (robots on the Map page) | `VendorAdapter.mapPositions`, used by `server/vendors/mapRobots.ts` (`GET /api/map/robots`) |
 | Tables | `0002_vendors.sql` (all vendors: `vendor_configs`, `vendor_stores`, `robots`, `vendor_events`); `0003`–`0005` (Keenon only: robot maps, calibration, position alignment) |
 
 To add a vendor, write an adapter that implements `VendorAdapter`, add it to both registries, and give it a config page. To show its robots on the Map, also implement `mapPositions`. The Map page itself needs no changes.
 
 ### Keenon setup
 1. Run the database migrations (see [First-time setup](#first-time-setup)).
-2. **Keenon only accepts API calls from whitelisted IPs.** Netlify has no fixed outbound IP, so run the app locally on the whitelisted network (`npm run dev`).
+2. **Keenon only accepts API calls from whitelisted IPs.** Run the app locally on the whitelisted network (`npm run dev`), or whitelist the cluster's fixed outbound IP.
 3. Go to **Vendors → Keenon** and choose the region:
 
    | Region | Base URL |
@@ -134,7 +156,7 @@ Set this up for each robot, from the whitelisted network. Start at **Vendors →
 
 The alignment can change when a robot restarts or relocalizes. If a robot looks out of place, re-check that floor with **Align position → Track robot**. Admins see a "robots not on the map" note on the Map page that explains what's missing for each robot.
 
-On the Netlify site, Keenon can't be reached (IP whitelist), so the Map shows the last known positions, faded after 2 minutes.
+Where Keenon can't be reached (IP not whitelisted), the Map shows the last known positions, faded after 2 minutes.
 
 ### Testing without real robots
 ```bash
@@ -145,9 +167,11 @@ npm run keenon:callbacks -- --url <callback URL> [--secret <client secret>]   # 
 ## Scripts
 | Command | What it does |
 |---|---|
-| `npm run dev` | App and API locally on :8888 |
-| `npm run build` | Type-check and production build |
-| `npm test` | Unit tests (coordinates, passwords, sessions, Keenon client and callbacks, map calibration and alignment, Map placement) |
+| `npm run dev` | App and API locally (Vite on :5173, API on :8080) |
+| `npm run build` | Type-check, build the web app (`dist/`) and bundle the server (`dist-server/`) |
+| `npm start` | Run the built server |
+| `npm run job:maintenance` | Run the hourly maintenance job once (after a build) |
+| `npm test` | Unit tests (server routing and static serving, coordinates, passwords, sessions, Keenon client and callbacks, map calibration and alignment, Map placement) |
 | `npm run create-user` | Create or reset an account from the command line |
 | `npm run keenon:mock` | Fake Keenon Cloud for local testing |
 | `npm run keenon:callbacks` | Send example Keenon callbacks to a webhook URL |

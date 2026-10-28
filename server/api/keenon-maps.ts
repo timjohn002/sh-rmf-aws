@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { RobotPosition } from '../../src/types/api'
@@ -417,7 +416,7 @@ async function locate(robotId: string): Promise<Response> {
 
 export default handler(async (req) => {
   await requireAdmin(req)
-  // /api/keenon/<section>/<id>/<action>; parsed by hand (netlify dev retries 404s without params).
+  // /api/keenon/<section>/<id>/<action>; parsed by hand so one handler serves every shape.
   const [, , section, id, action, ...rest] = new URL(req.url).pathname.split('/').filter(Boolean)
   if (rest.length) throw new HttpError(404, 'Not found')
 
@@ -461,13 +460,3 @@ export default handler(async (req) => {
   }
   throw new HttpError(404, 'Not found')
 })
-
-export const config: Config = {
-  path: [
-    '/api/keenon/robots',
-    '/api/keenon/robots/:id/:action',
-    '/api/keenon/stores/:id/scenes',
-    '/api/keenon/robot-floors/:id',
-    '/api/keenon/robot-floors/:id/:action',
-  ],
-}

@@ -14,8 +14,8 @@ import {
   passwordSchema,
   roleSchema,
   usernameSchema,
-} from '../netlify/lib/passwords'
-import { db } from '../netlify/lib/supabaseAdmin'
+} from '../server/lib/passwords'
+import { db } from '../server/lib/supabaseAdmin'
 
 const { values } = parseArgs({
   options: {

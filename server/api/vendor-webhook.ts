@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { timingSafeEqual } from 'node:crypto'
 import { HttpError, handler, json, methodNotAllowed } from '../lib/http'
 import { findAdapter } from '../vendors/index'
@@ -97,7 +96,3 @@ export default handler(
   },
   { checkOrigin: false },
 )
-
-export const config: Config = {
-  path: '/api/vendors/:vendor/webhook/:token',
-}

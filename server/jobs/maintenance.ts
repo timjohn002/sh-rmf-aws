@@ -1,18 +1,24 @@
-import type { Config } from '@netlify/functions'
 import { db } from '../lib/supabaseAdmin'
 import { VENDORS } from '../vendors/index'
 import { EVENT_RETENTION_DAYS, contextFor, loadConfig, persistSync, updateConfig } from '../vendors/store'
 
 /**
- * Hourly housekeeping:
+ * Hourly housekeeping, run as an OpenShift CronJob (`node dist-server/maintenance.mjs`):
  *  - delete vendor events older than the retention period;
  *  - re-sync stores/robots for vendors whose `<VENDOR>_SCHEDULED_SYNC=true`.
- *    Off by default: e.g. Keenon only accepts whitelisted IPs, and Netlify's are not fixed.
+ *    Off by default: e.g. Keenon only accepts whitelisted IPs, so enable it only
+ *    once the cluster's outbound IP is whitelisted.
+ *
+ * Exits non-zero if any step failed, so the CronJob shows the failure.
  */
-export default async () => {
+async function runMaintenance(): Promise<boolean> {
+  let ok = true
   const cutoff = new Date(Date.now() - EVENT_RETENTION_DAYS * 86_400_000).toISOString()
   const { error } = await db().from('vendor_events').delete().lt('received_at', cutoff)
-  if (error) console.error('Event cleanup failed', error)
+  if (error) {
+    console.error('Event cleanup failed', error)
+    ok = false
+  }
 
   for (const adapter of VENDORS) {
     if (process.env[`${adapter.id.toUpperCase()}_SCHEDULED_SYNC`] !== 'true') continue
@@ -25,10 +31,15 @@ export default async () => {
       const message = err instanceof Error ? err.message : String(err)
       console.error(`${adapter.id} scheduled sync failed: ${message}`)
       await updateConfig(adapter.id, { last_sync_error: message })
+      ok = false
     }
   }
+  return ok
 }
 
-export const config: Config = {
-  schedule: '@hourly',
+try {
+  process.exitCode = (await runMaintenance()) ? 0 : 1
+} catch (err) {
+  console.error('Maintenance failed', err)
+  process.exitCode = 1
 }

@@ -1,0 +1,36 @@
+# Dev environment. Replace every CHANGE-ME once the cluster, registry and hostname are known.
+#   cp deploy/overlays/dev/secret.env.example deploy/overlays/dev/.env.secret   # then fill it in
+#   oc apply -k deploy/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: starhub-rmf-dev # CHANGE-ME if the platform team assigns another namespace
+
+resources:
+  - ../../base
+
+images:
+  - name: starhub-rmf
+    newName: CHANGE-ME.registry.example.com/starhub/starhub-rmf
+    newTag: dev
+
+configMapGenerator:
+  - name: rmf-config
+    behavior: merge
+    literals:
+      - PUBLIC_SITE_URL=https://rmf-dev.apps.CHANGE-ME.example.com
+
+# Never committed: .env.* is git-ignored.
+secretGenerator:
+  - name: rmf-secrets
+    envs:
+      - .env.secret
+
+patches:
+  - target:
+      kind: Route
+      name: starhub-rmf
+    patch: |-
+      - op: add
+        path: /spec/host
+        value: rmf-dev.apps.CHANGE-ME.example.com

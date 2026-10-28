@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { z } from 'zod'
 import type {
   SecretState,
@@ -186,8 +185,7 @@ async function getEvent(id: string): Promise<Response> {
 
 export default handler(async (req) => {
   await requireAdmin(req)
-  // Parse the path ourselves: after a 404, `netlify dev` retries variants such as
-  // `/api/vendors/x/index.html` without route params.
+  // /api/vendors[/<vendor>[/<action>]] and /api/vendor-events/<id>; parsed by hand so one handler serves every shape.
   const [, section, vendorId, action, ...rest] = new URL(req.url).pathname.split('/').filter(Boolean)
   if (rest.length) throw new HttpError(404, 'Not found')
 
@@ -226,7 +224,3 @@ export default handler(async (req) => {
       throw new HttpError(404, 'Not found')
   }
 })
-
-export const config: Config = {
-  path: ['/api/vendors', '/api/vendors/:vendor', '/api/vendors/:vendor/:action', '/api/vendor-events/:id'],
-}

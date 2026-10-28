@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import type { RobotPosition } from '../../src/types/api'
 import { handler, json, methodNotAllowed, requireUser } from '../lib/http'
 import { db } from '../lib/supabaseAdmin'
@@ -32,7 +31,3 @@ export default handler(async (req) => {
   })
   return json(body)
 })
-
-export const config: Config = {
-  path: '/api/map/robots',
-}

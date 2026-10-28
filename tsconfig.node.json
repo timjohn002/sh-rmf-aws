@@ -14,5 +14,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "netlify", "scripts"]
+  "include": ["vite.config.ts", "server", "scripts"]
 }

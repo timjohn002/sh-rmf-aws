@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { refreshWaitSeconds } from '../../src/lib/robotRefresh'
 import type { Robot, RobotVendorInfo, RobotsResponse } from '../../src/types/api'
 import { HttpError, handler, json, methodNotAllowed, requireUser } from '../lib/http'
@@ -94,8 +93,7 @@ async function refreshVendor(vendorId: string): Promise<Response> {
 
 export default handler(async (req) => {
   await requireUser(req)
-  // Parse the path ourselves: after a 404, `netlify dev` retries variants such as
-  // `/api/robots/vendors/x/refresh.html` without route params.
+  // /api/robots[/vendors/<vendor>/refresh]; parsed by hand so one handler serves every shape.
   const [, , section, vendorId, action, ...rest] = new URL(req.url).pathname.split('/').filter(Boolean)
   if (!section) {
     if (req.method !== 'GET') methodNotAllowed()
@@ -107,7 +105,3 @@ export default handler(async (req) => {
   if (req.method !== 'POST') methodNotAllowed()
   return refreshVendor(vendorId)
 })
-
-export const config: Config = {
-  path: ['/api/robots', '/api/robots/vendors/:vendor/refresh'],
-}

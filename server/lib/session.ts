@@ -48,7 +48,8 @@ export function readSessionCookie(req: Request): string | null {
 }
 
 function cookieAttributes(req: Request, maxAge: number): string {
-  // Secure cookies need HTTPS; local `netlify dev` runs on plain http://localhost.
+  // Secure cookies need HTTPS; local dev runs on plain http://localhost. Behind a TLS-terminating
+  // proxy the server rebuilds req.url from X-Forwarded-Proto (see server/app.ts).
   const secure = new URL(req.url).protocol === 'https:' ? '; Secure' : ''
   return `Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`
 }

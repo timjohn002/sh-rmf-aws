@@ -1,4 +1,3 @@
-import type { Config } from '@netlify/functions'
 import { z } from 'zod'
 import type { Role, SessionUser } from '../../src/types/api'
 import { HttpError, handler, json, methodNotAllowed, parseBody, requireUser } from '../lib/http'
@@ -108,7 +107,3 @@ export default handler(async (req, params) => {
       throw new HttpError(404, 'Not found')
   }
 })
-
-export const config: Config = {
-  path: '/api/auth/:action',
-}
