@@ -1,6 +1,7 @@
-# Dev environment. Replace every CHANGE-ME once the cluster, registry and hostname are known.
+# Dev environment on EKS. Replace every CHANGE-ME once the cluster, ECR repository,
+# hostname and ACM certificate are known.
 #   cp deploy/overlays/dev/secret.env.example deploy/overlays/dev/.env.secret   # then fill it in
-#   oc apply -k deploy/overlays/dev
+#   kubectl apply -k deploy/overlays/dev
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -11,14 +12,14 @@ resources:
 
 images:
   - name: starhub-rmf
-    newName: CHANGE-ME.registry.example.com/starhub/starhub-rmf
+    newName: CHANGE-ME.dkr.ecr.ap-southeast-1.amazonaws.com/starhub-rmf # <account-id>.dkr.ecr...
     newTag: dev
 
 configMapGenerator:
   - name: rmf-config
     behavior: merge
     literals:
-      - PUBLIC_SITE_URL=https://rmf-dev.apps.CHANGE-ME.example.com
+      - PUBLIC_SITE_URL=https://rmf-dev.CHANGE-ME.example.com
 
 # Never committed: .env.* is git-ignored.
 secretGenerator:
@@ -28,9 +29,12 @@ secretGenerator:
 
 patches:
   - target:
-      kind: Route
+      kind: Ingress
       name: starhub-rmf
     patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: rmf-dev.CHANGE-ME.example.com
       - op: add
-        path: /spec/host
-        value: rmf-dev.apps.CHANGE-ME.example.com
+        path: /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+        value: arn:aws:acm:ap-southeast-1:CHANGE-ME:certificate/CHANGE-ME

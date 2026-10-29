@@ -1,0 +1,34 @@
+# Public HTTPS entry point: an Application Load Balancer created by the
+# AWS Load Balancer Controller, which must be installed on the cluster.
+# Internet-facing because vendor clouds (Keenon) call the webhook from outside.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: starhub-rmf
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Send traffic straight to pod IPs (works with the readiness probe and PDB).
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    # alb.ingress.kubernetes.io/certificate-arn: set per overlay (ACM certificate for the host)
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # Keenon map discovery makes many sequential vendor calls; allow more than the 60s default.
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=90
+    # Time to finish in-flight requests when a pod is removed; the pod's preStop delay
+    # (deployment.yaml) keeps it serving while the ALB stops sending new ones.
+    alb.ingress.kubernetes.io/target-group-attributes: deregistration_delay.timeout_seconds=30
+spec:
+  ingressClassName: alb
+  rules:
+    - host: CHANGE-ME.example.com # set per overlay
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: starhub-rmf
+                port:
+                  name: http

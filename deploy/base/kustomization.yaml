@@ -11,10 +11,9 @@ resources:
   - serviceaccount.yaml
   - deployment.yaml
   - service.yaml
-  - route.yaml
+  - ingress.yaml
   - cronjob.yaml
   - pdb.yaml
-  - networkpolicy.yaml
 
 # Non-secret settings. Overlays override values with `behavior: merge`.
 # The secret (rmf-secrets) comes from each overlay's secretGenerator.
@@ -22,7 +21,7 @@ configMapGenerator:
   - name: rmf-config
     literals:
       - NODE_ENV=production
-      # The OpenShift router terminates TLS and sets X-Forwarded-Proto/Host.
+      # The AWS load balancer terminates TLS and sets X-Forwarded-Proto (Host is passed through).
       - TRUST_PROXY=true
       # Public URL shown to vendors for callbacks.
       - PUBLIC_SITE_URL=https://CHANGE-ME.example.com

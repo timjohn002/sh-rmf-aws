@@ -20,7 +20,7 @@ spec:
         app.kubernetes.io/component: web
     spec:
       serviceAccountName: starhub-rmf
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -51,10 +51,11 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 3
           lifecycle:
-            # Give the router time to stop sending traffic before the server closes.
+            # Give the load balancer time to deregister the pod and stop sending new
+            # requests before the server closes.
             preStop:
               exec:
-                command: ["sleep", "5"]
+                command: ["sleep", "15"]
           resources:
             requests:
               cpu: 100m

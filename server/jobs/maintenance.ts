@@ -3,7 +3,7 @@ import { VENDORS } from '../vendors/index'
 import { EVENT_RETENTION_DAYS, contextFor, loadConfig, persistSync, updateConfig } from '../vendors/store'
 
 /**
- * Hourly housekeeping, run as an OpenShift CronJob (`node dist-server/maintenance.mjs`):
+ * Hourly housekeeping, run as a Kubernetes CronJob (`node dist-server/maintenance.mjs`):
  *  - delete vendor events older than the retention period;
  *  - re-sync stores/robots for vendors whose `<VENDOR>_SCHEDULED_SYNC=true`.
  *    Off by default: e.g. Keenon only accepts whitelisted IPs, so enable it only

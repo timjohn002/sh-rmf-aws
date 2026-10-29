@@ -36,7 +36,7 @@ export function pathForLog(path: string): string {
 }
 
 /**
- * Behind a TLS-terminating proxy (the OpenShift router), the request arrives as
+ * Behind a TLS-terminating proxy (the AWS load balancer), the request arrives as
  * plain http on the pod's port. Rebuild the URL from X-Forwarded-Proto/Host so
  * handlers see the public origin: it decides the Secure cookie flag, the origin
  * check and the webhook URL. Only use when a trusted proxy sets these headers.

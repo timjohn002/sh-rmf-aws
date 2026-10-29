@@ -123,6 +123,13 @@ describe('applyForwardedHeaders', () => {
     expect(applyForwardedHeaders(req).url).toBe('https://rmf.example.com/api/auth/me')
   })
 
+  it('keeps the Host header when only the scheme is forwarded (AWS ALB)', () => {
+    const req = new Request('http://rmf.example.com/api/auth/me', {
+      headers: { 'x-forwarded-proto': 'https', 'x-forwarded-port': '443' },
+    })
+    expect(applyForwardedHeaders(req).url).toBe('https://rmf.example.com/api/auth/me')
+  })
+
   it('keeps the request body', async () => {
     const req = new Request('http://pod:8080/api/auth/login', {
       method: 'POST',

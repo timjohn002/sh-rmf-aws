@@ -25,7 +25,7 @@ Node server in a container (server/)  ── service-role key ──▶  Supabas
 ```
 
 - The browser **never** talks to Supabase with a key. All data goes through the `/api/*` routes, which check the session and role.
-- One container image runs on **Red Hat OpenShift**: `server/main.ts` (Hono on Node 24) serves the web app and every API route listed in `server/routes.ts`. An hourly CronJob runs `server/jobs/maintenance.ts`.
+- One container image runs on **Amazon EKS** (Kubernetes): `server/main.ts` (Hono on Node 24) serves the web app and every API route listed in `server/routes.ts`. An hourly CronJob runs `server/jobs/maintenance.ts`.
 - Accounts live in the `app_users` table, with passwords hashed using **bcrypt**. Supabase Auth and email are not used.
 - Row-level security is enabled with no policies, so the public anon key can't read any table. The `floor-plans` storage bucket is private, and images are shown through 1-hour signed URLs.
 - Floor plan coordinates: each floor stores `scale_m_per_px` and an origin in pixels. World coordinates are in meters, with +Y pointing up (ROS / Open-RMF convention). See `src/lib/coords.ts`.
@@ -87,20 +87,30 @@ podman run --rm --env-file .env.local -p 8080:8080 starhub-rmf:dev
 ```
 Health checks: `/healthz` (process is up) and `/readyz` (database reachable).
 
-## Deploying (OpenShift)
+## Deploying (Amazon EKS)
 Manifests are in `deploy/` (Kustomize): `deploy/base` is cluster-agnostic, and `deploy/overlays/dev` holds the environment-specific values.
 
-1. Build and push the image to the registry the cluster pulls from.
-2. In `deploy/overlays/dev/kustomization.yaml`, replace every `CHANGE-ME`: namespace, image, Route host and `PUBLIC_SITE_URL`.
-3. Copy `deploy/overlays/dev/secret.env.example` to `deploy/overlays/dev/.env.secret` (git-ignored) and fill in the same values as `.env.local`.
-4. `oc apply -k deploy/overlays/dev`
+The cluster needs the **AWS Load Balancer Controller** (it turns the Ingress into an Application Load Balancer). You also need an **ECR** repository for the image, an **ACM** certificate for the hostname, and a DNS record pointing the hostname at the load balancer.
 
-This creates the Deployment (2 replicas), Service, Route (TLS at the router), the hourly maintenance CronJob, a PodDisruptionBudget and a NetworkPolicy. The container runs as a random non-root UID with a read-only filesystem.
+1. Push the image to ECR. CI does this on every push to `main` once the `AWS_ROLE_ARN` and `ECR_REPOSITORY` repository variables are set (see `.github/workflows/ci.yml`). To push by hand:
+   ```bash
+   aws ecr get-login-password --region ap-southeast-1 | podman login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com
+   podman tag starhub-rmf:dev <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/starhub-rmf:dev
+   podman push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/starhub-rmf:dev
+   ```
+2. In `deploy/overlays/dev/kustomization.yaml`, replace every `CHANGE-ME`: namespace, image, hostname, certificate ARN and `PUBLIC_SITE_URL`.
+3. Copy `deploy/overlays/dev/secret.env.example` to `deploy/overlays/dev/.env.secret` (git-ignored) and fill in the same values as `.env.local`.
+4. `kubectl apply -k deploy/overlays/dev`
+5. Point the hostname's DNS at the load balancer address shown by `kubectl get ingress starhub-rmf -n <namespace>`, then give Keenon the new callback URL (Vendors → Keenon).
+
+This creates the Deployment (2 replicas), Service, Ingress (internet-facing ALB, TLS at the load balancer), the hourly maintenance CronJob and a PodDisruptionBudget. The container runs as a non-root user with a read-only filesystem.
+
+For outbound calls to Keenon, run the nodes in private subnets behind a NAT gateway with an Elastic IP, and have Keenon whitelist that IP. If the cluster enforces network policies, add one that allows port 8080 from the load balancer's subnets.
 
 | Environment variable | Purpose |
 |---|---|
 | `PORT` | Listen port (default `8080`) |
-| `TRUST_PROXY=true` | Use `X-Forwarded-Proto`/`Host` from the OpenShift router, so cookies get `Secure` and the origin check sees the public URL. Only set it behind a trusted proxy. |
+| `TRUST_PROXY=true` | Use `X-Forwarded-Proto`/`Host` from the load balancer, so cookies get `Secure` and the origin check sees the public URL. Only set it behind a trusted proxy. |
 
 ## Robot vendors
 Each vendor integration is code. There's one adapter folder per vendor, registered in a list:

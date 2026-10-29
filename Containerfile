@@ -1,4 +1,4 @@
-# Starhub RMF: web app + API server for OpenShift.
+# Starhub RMF: web app + API server for Kubernetes (Amazon EKS).
 #   podman build -t starhub-rmf:dev .
 #   podman run --rm --env-file .env.local -p 8080:8080 starhub-rmf:dev
 
@@ -19,8 +19,8 @@ COPY --from=build --chown=1001:0 /opt/app-root/src/dist ./dist
 COPY --from=build --chown=1001:0 /opt/app-root/src/dist-server ./dist-server
 ENV NODE_ENV=production \
     PORT=8080
-# OpenShift runs containers as a random UID in group 0; files are group-0 owned and
-# world-readable, and nothing is written at runtime.
+# Runs as non-root UID 1001. Files are group-0 owned and world-readable, so any UID
+# also works, and nothing is written at runtime (read-only root filesystem is fine).
 USER 1001
 EXPOSE 8080
 CMD ["node", "--enable-source-maps", "dist-server/main.mjs"]
