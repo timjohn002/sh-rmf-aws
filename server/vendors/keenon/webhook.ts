@@ -14,6 +14,9 @@ import {
   KEENON_WORK_STATE,
 } from './types'
 
+/** Event type of an elevator-riding callback: `openAdapt/<action>`, e.g. `openAdapt/QueryElevatorGroup`. */
+export const ELEVATOR_EVENT_PREFIX = 'openAdapt/'
+
 /** Allowed clock difference for X-Timestamp. */
 const TIMESTAMP_TOLERANCE_MS = 10 * 60_000
 
@@ -234,6 +237,18 @@ export function interpretKeenonCallback(body: unknown, now: Date = new Date()): 
           },
         }),
       )
+    }
+
+    case 'openAdapt': {
+      // Elevator riding (4.18): one step per callback, named by `action`. The work is done
+      // in callbackActions.ts; here it only gets a readable type and its robot.
+      const action = str(data.action)
+      return {
+        eventType: action ? `${ELEVATOR_EVENT_PREFIX}${action}` : type,
+        robotExternalId: str(data.deviceName) ?? str(data.robotSn),
+        patch: null,
+        status: 'processed',
+      }
     }
 
     default: {

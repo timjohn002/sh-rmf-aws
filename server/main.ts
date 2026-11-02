@@ -4,6 +4,8 @@ import { serve } from '@hono/node-server'
 import { applyForwardedHeaders, createApp, logJson } from './app'
 import { db } from './lib/supabaseAdmin'
 import { ROUTES } from './routes'
+import { VENDORS } from './vendors/index'
+import { getConfigCached } from './vendors/store'
 
 const port = Number(process.env.PORT ?? 8080)
 const trustProxy = process.env.TRUST_PROXY === 'true'
@@ -17,6 +19,9 @@ async function ready() {
 }
 
 const app = createApp({ routes: ROUTES, staticDir, ready })
+
+// Load vendor configs now, so even the first callback is answered without waiting on the database.
+for (const vendor of VENDORS) getConfigCached(vendor.id).catch(() => {})
 
 const server = serve(
   { fetch: (req) => app.fetch(trustProxy ? applyForwardedHeaders(req) : req), port },

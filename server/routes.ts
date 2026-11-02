@@ -15,7 +15,11 @@ export const ROUTES: Route[] = [
   { paths: ['/api/floors', '/api/floors/:id', '/api/floors/:id/plan-upload-url'], handler: floors },
   { paths: ['/api/map/robots'], handler: map },
   { paths: ['/api/robots', '/api/robots/vendors/:vendor/refresh'], handler: robots },
-  { paths: ['/api/vendors/:vendor/webhook/:token'], handler: vendorWebhook },
+  {
+    // `/keenon/webhook`: the address Keenon's portal currently calls (no /api/vendors prefix, no token).
+    paths: ['/api/vendors/:vendor/webhook', '/api/vendors/:vendor/webhook/:token', '/:vendor{keenon}/webhook'],
+    handler: vendorWebhook,
+  },
   {
     paths: ['/api/vendors', '/api/vendors/:vendor', '/api/vendors/:vendor/:action', '/api/vendor-events/:id'],
     handler: vendors,

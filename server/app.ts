@@ -36,6 +36,18 @@ export function pathForLog(path: string): string {
 }
 
 /**
+ * The public URL a request was sent to, for the callback log. Prefers the proxy's
+ * X-Forwarded-Proto/Host (e.g. ngrok without TRUST_PROXY); display only, never trusted.
+ */
+export function endpointForLog(req: Request): string {
+  const url = new URL(req.url)
+  const proto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
+  const host = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+  const scheme = proto === 'http' || proto === 'https' ? proto : url.protocol.slice(0, -1)
+  return `${scheme}://${host || url.host}${pathForLog(url.pathname)}`
+}
+
+/**
  * Behind a TLS-terminating proxy (the AWS load balancer), the request arrives as
  * plain http on the pod's port. Rebuild the URL from X-Forwarded-Proto/Host so
  * handlers see the public origin: it decides the Secure cookie flag, the origin

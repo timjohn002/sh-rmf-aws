@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { KEENON_SECRET_FIELDS, keenonBaseUrl, type KeenonSettings } from '../../../src/vendors/keenon/shared'
 import type { SyncedRobot, VendorAdapter, VendorConfigRow, VendorContext } from '../types'
 import { getRobots, getStores } from './api'
+import { handleKeenonCallback } from './callbackActions'
 import { KeenonClient, KeenonError } from './client'
 import { KEENON_OK, KEENON_ONLINE_TYPE, type KeenonRobot } from './types'
 import { locateKeenonRobots, prepareKeenonPlacer } from './placement'
@@ -153,4 +154,6 @@ export const keenonAdapter: VendorAdapter = {
   interpretWebhook: (body) => interpretKeenonCallback(body),
 
   webhookAck: { code: KEENON_OK, msg: 'success' },
+
+  onCallback: (event, config) => handleKeenonCallback(event, config),
 }

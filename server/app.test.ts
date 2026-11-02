@@ -10,7 +10,7 @@ import robots from './api/robots'
 import users from './api/users'
 import vendorWebhook from './api/vendor-webhook'
 import vendors from './api/vendors'
-import { type Route, type RouteHandler, applyForwardedHeaders, createApp, pathForLog } from './app'
+import { type Route, type RouteHandler, applyForwardedHeaders, createApp, endpointForLog, pathForLog } from './app'
 import { ROUTES } from './routes'
 
 /** The real route table, with each handler swapped for one that reports which route matched. */
@@ -35,7 +35,9 @@ describe('route table', () => {
     ['GET', '/api/map/robots', map, {}],
     ['GET', '/api/robots', robots, {}],
     ['POST', '/api/robots/vendors/keenon/refresh', robots, { vendor: 'keenon' }],
+    ['POST', '/api/vendors/keenon/webhook', vendorWebhook, { vendor: 'keenon' }],
     ['POST', '/api/vendors/keenon/webhook/secret-token', vendorWebhook, { vendor: 'keenon', token: 'secret-token' }],
+    ['POST', '/keenon/webhook', vendorWebhook, { vendor: 'keenon' }],
     ['GET', '/api/vendors', vendors, {}],
     ['PUT', '/api/vendors/keenon', vendors, { vendor: 'keenon' }],
     ['POST', '/api/vendors/keenon/sync', vendors, { vendor: 'keenon', action: 'sync' }],
@@ -150,5 +152,24 @@ describe('applyForwardedHeaders', () => {
 describe('pathForLog', () => {
   it('redacts webhook tokens', () => {
     expect(pathForLog('/api/vendors/keenon/webhook/abc123')).toBe('/api/vendors/keenon/webhook/[redacted]')
+  })
+})
+
+describe('endpointForLog', () => {
+  it('uses the forwarded scheme and host (e.g. ngrok)', () => {
+    const req = new Request('http://localhost:8080/api/vendors/keenon/webhook', {
+      headers: { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'abc.ngrok-free.dev' },
+    })
+    expect(endpointForLog(req)).toBe('https://abc.ngrok-free.dev/api/vendors/keenon/webhook')
+  })
+
+  it('falls back to the request URL and redacts the token', () => {
+    const req = new Request('http://abc.ngrok-free.dev/api/vendors/keenon/webhook/secret')
+    expect(endpointForLog(req)).toBe('http://abc.ngrok-free.dev/api/vendors/keenon/webhook/[redacted]')
+  })
+
+  it('leaves out the query string', () => {
+    const req = new Request('https://rmf.example.com/api/vendors/keenon/webhook?x=1')
+    expect(endpointForLog(req)).toBe('https://rmf.example.com/api/vendors/keenon/webhook')
   })
 })

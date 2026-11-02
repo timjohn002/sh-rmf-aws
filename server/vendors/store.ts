@@ -19,22 +19,78 @@ export async function loadConfig(vendor: string): Promise<VendorConfigRow | null
   return data as VendorConfigRow | null
 }
 
+// In-memory copy of each vendor's config for the webhook, so callbacks are answered without
+// waiting on the database (Keenon hangs up on slow replies). Changes saved through this server
+// update it at once; changes from another server sharing the database show up after CONFIG_TTL_MS.
+const CONFIG_TTL_MS = 30_000
+const configCache = new Map<string, { config: VendorConfigRow | null; loadedAt: number }>()
+const configLoads = new Map<string, Promise<VendorConfigRow | null>>()
+
+function rememberConfig(vendor: string, config: VendorConfigRow | null, now = Date.now()): void {
+  configCache.set(vendor, { config, loadedAt: now })
+}
+
+function reloadConfig(
+  vendor: string,
+  load: (vendor: string) => Promise<VendorConfigRow | null>,
+  now: () => number,
+): Promise<VendorConfigRow | null> {
+  let pending = configLoads.get(vendor)
+  if (!pending) {
+    pending = load(vendor)
+      .then((config) => {
+        rememberConfig(vendor, config, now())
+        return config
+      })
+      .finally(() => configLoads.delete(vendor))
+    configLoads.set(vendor, pending)
+  }
+  return pending
+}
+
+/**
+ * The vendor's config, from memory when possible. A copy older than CONFIG_TTL_MS is still
+ * returned at once and refreshed in the background; only the very first call waits.
+ */
+export async function getConfigCached(
+  vendor: string,
+  load: (vendor: string) => Promise<VendorConfigRow | null> = loadConfig,
+  now: () => number = Date.now,
+): Promise<VendorConfigRow | null> {
+  const cached = configCache.get(vendor)
+  if (!cached) return reloadConfig(vendor, load, now)
+  if (now() - cached.loadedAt > CONFIG_TTL_MS) reloadConfig(vendor, load, now).catch(() => {})
+  return cached.config
+}
+
+/** For tests. */
+export function clearConfigCache(): void {
+  configCache.clear()
+  configLoads.clear()
+}
+
 /** Load the vendor's config, creating an empty (disabled) one the first time. */
 export async function ensureConfig(vendor: string): Promise<VendorConfigRow> {
   const existing = await loadConfig(vendor)
-  if (existing) return existing
+  if (existing) {
+    rememberConfig(vendor, existing)
+    return existing
+  }
   const { data, error } = await db()
     .from('vendor_configs')
     .upsert({ vendor, webhook_token: newWebhookToken() }, { onConflict: 'vendor', ignoreDuplicates: true })
     .select('*')
     .maybeSingle()
   if (error) throw error
-  return (data as VendorConfigRow | null) ?? (await loadConfig(vendor))!
+  const config = (data as VendorConfigRow | null) ?? (await loadConfig(vendor))!
+  rememberConfig(vendor, config)
+  return config
 }
 
 export async function updateConfig(vendor: string, patch: Partial<VendorConfigRow>): Promise<VendorConfigRow> {
   const { data, error } = await db().from('vendor_configs').update(patch).eq('vendor', vendor).select('*').single()
   if (error) throw error
+  rememberConfig(vendor, data as VendorConfigRow)
   return data as VendorConfigRow
 }
 
@@ -60,10 +116,13 @@ export function vendorStatus(adapter: VendorAdapter, config: VendorConfigRow | n
   return 'connected'
 }
 
-/** Public URL vendors should call. `PUBLIC_SITE_URL` wins so local dev shows the live URL. */
-export function webhookUrl(vendor: string, token: string, req: Request): string {
+/**
+ * Public URL vendors should call. `PUBLIC_SITE_URL` wins so local dev shows the public
+ * (e.g. ngrok) URL. No token for now; the older `/webhook/<token>` URLs keep working.
+ */
+export function webhookUrl(vendor: string, req: Request): string {
   const base = (process.env.PUBLIC_SITE_URL || new URL(req.url).origin).replace(/\/+$/, '')
-  return `${base}/api/vendors/${vendor}/webhook/${token}`
+  return `${base}/api/vendors/${vendor}/webhook`
 }
 
 export async function persistSync(vendor: string, data: SyncData): Promise<void> {
@@ -142,6 +201,11 @@ export interface EventRecord {
   status: 'processed' | 'ignored' | 'rejected' | 'failed'
   error?: string | null
   duration_ms: number
+  /** Public URL that received the callback (token redacted). */
+  endpoint: string
+  /** What we replied to the vendor. */
+  response_status: number
+  response_body: unknown
 }
 
 export async function recordEvent(event: EventRecord): Promise<void> {

@@ -84,6 +84,17 @@ export function useVendorEvents(id: string, filters: EventFilters, before?: stri
   })
 }
 
+/** The newest callbacks with their bodies, polled while `enabled` (Live callbacks). */
+export function useLiveVendorEvents(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['vendor-events', id, 'live'],
+    queryFn: () => api<VendorEvent[]>(`/api/vendors/${id}/events?full=1&limit=20`),
+    refetchInterval: enabled ? 3_000 : false,
+    enabled,
+    placeholderData: keepPreviousData,
+  })
+}
+
 export function useVendorEvent(eventId: string | null) {
   return useQuery({
     queryKey: ['vendor-event', eventId],

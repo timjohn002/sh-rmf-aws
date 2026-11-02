@@ -1,6 +1,7 @@
 # Starhub RMF: web app + API server for Kubernetes (Amazon EKS).
 #   podman build -t starhub-rmf:dev .
-#   podman run --rm --env-file .env.local -p 8080:8080 starhub-rmf:dev
+#   podman run --rm --env-file .env.local -p 8090:8080 starhub-rmf:dev
+# (host port 8090, so it can run next to `npm run dev` on 8080; `npm run tunnel` forwards to 8090)
 
 # ---- Build: install dev dependencies, type-check, build the web app and bundle the server.
 FROM registry.access.redhat.com/ubi9/nodejs-24 AS build

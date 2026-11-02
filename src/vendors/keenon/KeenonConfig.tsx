@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { CopyField, VendorStatusBadge } from '../../components/vendors/common'
+import { LiveCallbacks } from '../../components/vendors/LiveCallbacks'
 import { VendorEventLog } from '../../components/vendors/VendorEventLog'
 import {
   Button,
@@ -13,7 +14,6 @@ import {
   errorMessage,
 } from '../../components/ui'
 import {
-  useRotateWebhook,
   useSyncVendor,
   useTestVendor,
   useUpdateVendor,
@@ -60,6 +60,7 @@ export function KeenonConfig({ vendorId }: { vendorId: string }) {
       <StoresCard config={config} />
       <KeenonRobotMapsCard />
       <CallbacksCard config={config} />
+      <LiveCallbacks vendorId={config.id} />
       <Card title="Callback log" description="Every callback Keenon sends, kept for 30 days. Click a row to see the payload.">
         <VendorEventLog vendorId={config.id} />
       </Card>
@@ -328,7 +329,6 @@ function StoresCard({ config }: { config: Config }) {
 
 function CallbacksCard({ config }: { config: Config }) {
   const update = useUpdateVendor<KeenonSettings>(config.id)
-  const rotate = useRotateWebhook<KeenonSettings>(config.id)
   const isLocalUrl = /\/\/(localhost|127\.0\.0\.1)/.test(config.webhook_url)
 
   return (
@@ -340,9 +340,15 @@ function CallbacksCard({ config }: { config: Config }) {
         <CopyField label="Callback URL" value={config.webhook_url} />
         {isLocalUrl && (
           <ErrorBox>
-            This URL points to your computer, which Keenon cannot reach. Set <code>PUBLIC_SITE_URL</code> to the live
-            site URL in <code>.env.local</code>.
+            This URL points to your computer, which Keenon cannot reach. Set <code>PUBLIC_SITE_URL</code> in{' '}
+            <code>.env.local</code> to the public URL: your ngrok domain (<code>npm run tunnel</code>) or the live site.
           </ErrorBox>
+        )}
+        {!config.settings.require_signature && (
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            This URL contains no secret, so anyone who knows it can send callbacks. Turn on{' '}
+            <strong>Require signature</strong> once Keenon has enabled callback signing.
+          </p>
         )}
         {!config.enabled && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -353,9 +359,10 @@ function CallbacksCard({ config }: { config: Config }) {
         <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600">
           <li>Copy the callback URL.</li>
           <li>
-            Configure it as the webhook address on the Keenon Open Platform, or send it to Keenon technical support.
+            Configure it as the webhook address on the Keenon Open Platform (scenario <code>openAdapt</code> for
+            elevator riding), or send it to Keenon technical support.
           </li>
-          <li>Watch the callback log below. The first callbacks usually arrive when a robot changes state.</li>
+          <li>Watch Live callbacks below. The first callbacks usually arrive when a robot changes state.</li>
         </ol>
 
         <Toggle
@@ -367,25 +374,10 @@ function CallbacksCard({ config }: { config: Config }) {
         />
         {update.error && <ErrorBox>{errorMessage(update.error)}</ErrorBox>}
 
-        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-          <span>
-            Last callback received:{' '}
-            <span title={formatDateTime(config.last_callback_at)}>{timeAgo(config.last_callback_at)}</span>
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={rotate.isPending}
-            onClick={() => {
-              if (confirm('Create a new callback URL? The current URL stops working immediately and Keenon must be updated.')) {
-                rotate.mutate()
-              }
-            }}
-          >
-            Rotate URL
-          </Button>
-        </div>
-        {rotate.error && <ErrorBox>{errorMessage(rotate.error)}</ErrorBox>}
+        <p className="text-sm text-slate-600">
+          Last callback received:{' '}
+          <span title={formatDateTime(config.last_callback_at)}>{timeAgo(config.last_callback_at)}</span>
+        </p>
       </div>
     </Card>
   )

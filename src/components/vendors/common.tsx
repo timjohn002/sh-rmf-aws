@@ -1,6 +1,50 @@
 import { useState } from 'react'
-import type { VendorStatus } from '../../types/api'
+import type { SignatureStatus, VendorEventStatus, VendorStatus } from '../../types/api'
 import { Badge, Button, type BadgeTone } from '../ui'
+
+// Callback log badges, shared by the Callback log and Live callbacks.
+export const EVENT_STATUS_TONE: Record<VendorEventStatus, BadgeTone> = {
+  processed: 'green',
+  ignored: 'slate',
+  rejected: 'red',
+  failed: 'red',
+}
+
+export const SIGNATURE_TONE: Record<SignatureStatus, BadgeTone> = {
+  valid: 'green',
+  invalid: 'red',
+  missing: 'amber',
+  not_checked: 'slate',
+}
+
+export const SIGNATURE_LABEL: Record<SignatureStatus, string> = {
+  valid: 'signed',
+  invalid: 'bad signature',
+  missing: 'unsigned',
+  not_checked: 'not checked',
+}
+
+/** Pretty-printed JSON (or raw text) in a dark code block. */
+export function JsonBlock({ title, value }: { title?: string; value: unknown }) {
+  return (
+    <div>
+      {title && <p className="mb-1 font-medium text-slate-700">{title}</p>}
+      <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">
+        {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+      </pre>
+    </div>
+  )
+}
+
+/** Host of a logged callback endpoint, for compact display. */
+export function endpointHost(endpoint: string | null): string {
+  if (!endpoint) return '—'
+  try {
+    return new URL(endpoint).host
+  } catch {
+    return endpoint
+  }
+}
 
 const STATUS: Record<VendorStatus, { tone: BadgeTone; label: string }> = {
   not_configured: { tone: 'slate', label: 'Not configured' },

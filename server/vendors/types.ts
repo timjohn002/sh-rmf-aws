@@ -57,6 +57,13 @@ export interface WebhookInterpretation {
   note?: string
 }
 
+/** An accepted callback, handed to `VendorAdapter.onCallback`. */
+export interface CallbackEvent {
+  eventType: string
+  robotExternalId: string | null
+  body: unknown
+}
+
 /** Everything an adapter needs to call the vendor's API. */
 export interface VendorContext {
   config: VendorConfigRow
@@ -128,6 +135,11 @@ export interface VendorAdapter {
   interpretWebhook(body: unknown): WebhookInterpretation
   /** Body to reply to the vendor with after a callback is accepted. */
   webhookAck: unknown
+  /**
+   * Follow-up work for an accepted callback (e.g. driving an elevator). Runs after the
+   * callback is logged and is not awaited, so the vendor gets its reply straight away.
+   */
+  onCallback?(event: CallbackEvent, config: VendorConfigRow): Promise<void>
 
   /** Robots on the Map page. Vendors without it don't appear there. */
   mapPositions?: MapPositionsCapability
