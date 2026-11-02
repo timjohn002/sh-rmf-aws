@@ -1,29 +1,8 @@
 import { useState } from 'react'
 import { useVendorEvent, useVendorEvents, type EventFilters } from '../../hooks/useVendors'
 import { formatDateTime, timeAgo } from '../../lib/format'
-import type { SignatureStatus, VendorEventStatus } from '../../types/api'
-import { Badge, Button, ErrorBox, Modal, SelectField, Spinner, errorMessage, type BadgeTone } from '../ui'
-
-const STATUS_TONE: Record<VendorEventStatus, BadgeTone> = {
-  processed: 'green',
-  ignored: 'slate',
-  rejected: 'red',
-  failed: 'red',
-}
-
-const SIGNATURE_TONE: Record<SignatureStatus, BadgeTone> = {
-  valid: 'green',
-  invalid: 'red',
-  missing: 'amber',
-  not_checked: 'slate',
-}
-
-const SIGNATURE_LABEL: Record<SignatureStatus, string> = {
-  valid: 'signed',
-  invalid: 'bad signature',
-  missing: 'unsigned',
-  not_checked: 'not checked',
-}
+import { Badge, Button, ErrorBox, Modal, SelectField, Spinner, errorMessage } from '../ui'
+import { EVENT_STATUS_TONE, JsonBlock, SIGNATURE_LABEL, SIGNATURE_TONE, endpointHost } from './common'
 
 /** Callback log for one vendor: filterable, auto-refreshing, with a payload viewer. */
 export function VendorEventLog({ vendorId }: { vendorId: string }) {
@@ -77,6 +56,7 @@ export function VendorEventLog({ vendorId }: { vendorId: string }) {
               <th className="px-3 py-2 font-medium">Received</th>
               <th className="px-3 py-2 font-medium">Type</th>
               <th className="px-3 py-2 font-medium">Robot</th>
+              <th className="px-3 py-2 font-medium">Endpoint</th>
               <th className="px-3 py-2 font-medium">Signature</th>
               <th className="px-3 py-2 font-medium">Result</th>
             </tr>
@@ -118,11 +98,14 @@ function EventRows({
           </td>
           <td className="px-3 py-2 font-mono text-xs">{e.event_type}</td>
           <td className="px-3 py-2 font-mono text-xs text-slate-600">{e.robot_external_id ?? '—'}</td>
+          <td className="px-3 py-2 font-mono text-xs text-slate-600" title={e.endpoint ?? undefined}>
+            {endpointHost(e.endpoint)}
+          </td>
           <td className="px-3 py-2">
             <Badge tone={SIGNATURE_TONE[e.signature]}>{SIGNATURE_LABEL[e.signature]}</Badge>
           </td>
           <td className="px-3 py-2">
-            <Badge tone={STATUS_TONE[e.status]}>{e.status}</Badge>
+            <Badge tone={EVENT_STATUS_TONE[e.status]}>{e.status}</Badge>
             {e.error && <span className="ml-2 text-xs text-slate-500">{e.error}</span>}
           </td>
         </tr>
@@ -169,6 +152,8 @@ function EventDetail({ eventId, onClose }: { eventId: string | null; onClose: ()
             <dd className="font-mono text-xs">{data.event_type}</dd>
             <dt className="text-slate-500">Robot</dt>
             <dd className="font-mono text-xs">{data.robot_external_id ?? '—'}</dd>
+            <dt className="text-slate-500">Endpoint</dt>
+            <dd className="break-all font-mono text-xs">{data.endpoint ?? '—'}</dd>
             <dt className="text-slate-500">Signature</dt>
             <dd>
               {SIGNATURE_LABEL[data.signature]}
@@ -179,8 +164,16 @@ function EventDetail({ eventId, onClose }: { eventId: string | null; onClose: ()
               {data.status}
               {data.error && <span className="text-slate-500"> ({data.error})</span>}
             </dd>
+            <dt className="text-slate-500">Response</dt>
+            <dd>
+              {data.response_status ?? '—'}
+              {data.duration_ms !== null && <span className="text-slate-500"> in {data.duration_ms} ms</span>}
+            </dd>
           </dl>
           <JsonBlock title="Body" value={data.body ?? data.body_text} />
+          {data.response_body !== null && data.response_body !== undefined && (
+            <JsonBlock title="Response" value={data.response_body} />
+          )}
           <JsonBlock title="Headers" value={data.headers} />
           <div className="flex justify-end">
             <Button variant="secondary" onClick={onClose}>
@@ -190,16 +183,5 @@ function EventDetail({ eventId, onClose }: { eventId: string | null; onClose: ()
         </div>
       ) : null}
     </Modal>
-  )
-}
-
-function JsonBlock({ title, value }: { title: string; value: unknown }) {
-  return (
-    <div>
-      <p className="mb-1 font-medium text-slate-700">{title}</p>
-      <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-xs leading-relaxed text-slate-100">
-        {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-      </pre>
-    </div>
   )
 }

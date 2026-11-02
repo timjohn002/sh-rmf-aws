@@ -114,6 +114,8 @@ export interface VendorEventSummary {
   signature: SignatureStatus
   status: VendorEventStatus
   error: string | null
+  /** Public URL that received the callback (token redacted). Null for callbacks logged before 0006. */
+  endpoint: string | null
 }
 
 export interface VendorEvent extends VendorEventSummary {
@@ -122,6 +124,9 @@ export interface VendorEvent extends VendorEventSummary {
   body: unknown
   body_text: string | null
   duration_ms: number | null
+  /** What we replied to the vendor. */
+  response_status: number | null
+  response_body: unknown
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type {
   SecretState,
   VendorConfigView,
+  VendorEvent,
   VendorEventSummary,
   VendorStore,
   VendorSummary,
@@ -23,7 +24,8 @@ import {
 } from '../vendors/store'
 import type { VendorAdapter, VendorConfigRow } from '../vendors/types'
 
-const EVENT_SUMMARY_COLUMNS = 'id, vendor, received_at, event_type, robot_external_id, signature, status, error'
+const EVENT_SUMMARY_COLUMNS =
+  'id, vendor, received_at, event_type, robot_external_id, signature, status, error, endpoint'
 
 const updateSchema = z.object({
   enabled: z.boolean().optional(),
@@ -63,7 +65,7 @@ async function configView(adapter: VendorAdapter, config: VendorConfigRow, req: 
     enabled: config.enabled,
     settings: adapter.settingsSchema.parse(config.settings),
     secrets: maskSecrets(adapter, config),
-    webhook_url: webhookUrl(adapter.id, config.webhook_token, req),
+    webhook_url: webhookUrl(adapter.id, req),
     token_expires_at: config.token_expires_at,
     last_sync_at: config.last_sync_at,
     last_sync_error: config.last_sync_error,
@@ -158,12 +160,14 @@ async function syncVendor(adapter: VendorAdapter): Promise<Response> {
 
 async function listEvents(adapter: VendorAdapter, req: Request): Promise<Response> {
   const params = new URL(req.url).searchParams
+  // full=1: whole rows with bodies (Live callbacks), so a smaller page.
+  const full = params.get('full') === '1'
   let query = db()
     .from('vendor_events')
-    .select(EVENT_SUMMARY_COLUMNS)
+    .select(full ? '*' : EVENT_SUMMARY_COLUMNS)
     .eq('vendor', adapter.id)
     .order('received_at', { ascending: false })
-    .limit(Math.min(Number(params.get('limit')) || 50, 200))
+    .limit(Math.min(Number(params.get('limit')) || 50, full ? 50 : 200))
   const type = params.get('type')
   const status = params.get('status')
   const before = params.get('before')
@@ -172,7 +176,7 @@ async function listEvents(adapter: VendorAdapter, req: Request): Promise<Respons
   if (before && !Number.isNaN(Date.parse(before))) query = query.lt('received_at', before)
   const { data, error } = await query
   if (error) throw error
-  return json(data as VendorEventSummary[])
+  return json(data as unknown as VendorEventSummary[] | VendorEvent[])
 }
 
 async function getEvent(id: string): Promise<Response> {

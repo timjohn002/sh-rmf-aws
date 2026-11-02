@@ -152,7 +152,6 @@ export const KEENON_IGNORED_TYPES = new Set([
   'AddCleanStrategy',
   'UpdateCleanStrategy',
   'DeleteCleanStrategy',
-  'openAdapt',
 ])
 
 // --- API response shapes (only the fields we use) ---------------------------

@@ -37,10 +37,12 @@ jobs:
         run: buildah bud --layers -f Containerfile -t starhub-rmf:${{ github.sha }} .
       - name: Smoke-test image
         run: |
+          # Runs as an arbitrary UID, like some clusters do. Rootless podman on the runner can only
+          # map UIDs up to 65535, so a larger one fails before the app starts (exit 126).
           podman run -d --name rmf -p 8080:8080 \
             -e SESSION_SECRET=ci-only-session-secret-0123456789abcdef \
             -e SUPABASE_URL=https://example.invalid -e SUPABASE_SERVICE_ROLE_KEY=ci \
-            --user 123456:0 starhub-rmf:${{ github.sha }}
+            --user 54321:0 starhub-rmf:${{ github.sha }}
           for i in $(seq 1 20); do curl -fs localhost:8080/healthz && break; sleep 1; done
           curl -fs localhost:8080/ | grep -q '<title>Starhub RMF</title>'
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/auth/me)" = 401

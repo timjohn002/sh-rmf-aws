@@ -43,6 +43,7 @@ Node server in a container (server/)  ── service-role key ──▶  Supabas
    | `0003_keenon_robot_maps.sql` | Robot positions, Keenon scenes and floors (robot maps), and floor matching |
    | `0004_keenon_floor_calibration.sql` | Keenon map → floor plan calibration |
    | `0005_keenon_position_alignment.sql` | Keenon reported position → map alignment |
+   | `0006_vendor_event_details.sql` | Callback log: the URL that received each callback and our reply |
 
    The files are safe to run again, so re-running one by mistake does no harm.
 
@@ -83,8 +84,10 @@ npm run build
 node --env-file=.env.local dist-server/main.mjs   # http://localhost:8080 (in a container, `npm start` with env vars set)
 
 podman build -t starhub-rmf:dev .              # Red Hat UBI 9 + Node 24 image
-podman run --rm --env-file .env.local -p 8080:8080 starhub-rmf:dev
+podman run --rm --env-file .env.local -p 8090:8080 starhub-rmf:dev   # http://localhost:8090
 ```
+The container uses host port 8090 so it can run next to `npm run dev`, which uses 8080. Don't put `PORT` in `.env.local`: the container reads that file too.
+
 Health checks: `/healthz` (process is up) and `/readyz` (database reachable).
 
 ## Deploying (Amazon EKS)
@@ -122,7 +125,8 @@ Each vendor integration is code. There's one adapter folder per vendor, register
 | Keenon adapter (API client, callbacks, signature) | `server/vendors/keenon/` |
 | Config page per vendor | `src/vendors/index.ts` → `src/vendors/keenon/KeenonConfig.tsx` |
 | Map positions (robots on the Map page) | `VendorAdapter.mapPositions`, used by `server/vendors/mapRobots.ts` (`GET /api/map/robots`) |
-| Tables | `0002_vendors.sql` (all vendors: `vendor_configs`, `vendor_stores`, `robots`, `vendor_events`); `0003`–`0005` (Keenon only: robot maps, calibration, position alignment) |
+| Follow-up work on callbacks | `VendorAdapter.onCallback` (Keenon: `server/vendors/keenon/callbackActions.ts`) |
+| Tables | `0002_vendors.sql` and `0006` (all vendors: `vendor_configs`, `vendor_stores`, `robots`, `vendor_events`); `0003`–`0005` (Keenon only: robot maps, calibration, position alignment) |
 
 To add a vendor, write an adapter that implements `VendorAdapter`, add it to both registries, and give it a config page. To show its robots on the Map, also implement `mapPositions`. The Map page itself needs no changes.
 
@@ -141,8 +145,10 @@ To add a vendor, write an adapter that implements `VendorAdapter`, add it to bot
 
 4. Enter the client ID and secret, then click **Save & test connection**.
 5. Pick stores and click **Sync now**.
-6. Give Keenon the **callback URL** shown on the page. It uses `PUBLIC_SITE_URL`, so it points to the live site even when the app runs locally. Callbacks are logged on the page for 30 days.
-7. Optional: once Keenon support has enabled callback signing, turn on **Require signature**.
+6. Turn on **Enabled**, then give Keenon the **callback URL** shown on the page (`<PUBLIC_SITE_URL>/api/vendors/keenon/webhook`). For elevator riding, register it under the `openAdapt` scenario. The app also accepts `<PUBLIC_SITE_URL>/keenon/webhook`, which is what the Keenon portal currently calls. **Live callbacks** shows each callback as it arrives: the URL that received it, the payload and our reply. All callbacks are kept in the **Callback log** for 30 days.
+7. The callback URL contains no secret for now (older `/webhook/<token>` URLs still work). Once Keenon support has enabled callback signing, turn on **Require signature**.
+
+Callbacks that need follow-up work go through `VendorAdapter.onCallback`, which runs after the callback is logged and doesn't delay the reply to Keenon. For Keenon this is `server/vendors/keenon/callbackActions.ts`. Elevator steps (`openAdapt`) appear as `openAdapt/<action>`, e.g. `openAdapt/QueryElevatorGroup`, and are only logged for now.
 
 Environment variables:
 
@@ -174,6 +180,36 @@ npm run keenon:mock      # fake Keenon Cloud on http://localhost:4010 (client "m
 npm run keenon:callbacks -- --url <callback URL> [--secret <client secret>]   # replays the API doc's callback examples
 ```
 
+### Receiving real callbacks on your machine (ngrok)
+Until the app is deployed, Keenon can reach the app on your machine through an [ngrok](https://ngrok.com) tunnel. By default the tunnel goes to the Podman container on port 8090. Only webhook paths go through (`/api/vendors/<vendor>/webhook[/<token>]` and `/keenon/webhook`, see `scripts/ngrok-policy.yml`); the login page and the rest of the API stay private.
+
+One-time setup:
+1. Install ngrok 3.20 or later from the Microsoft Store (or ngrok.com/download), sign up, and run `ngrok config add-authtoken <your token>`. On managed laptops Microsoft Defender may quarantine the winget/zip download; the Store version is signed and runs.
+2. In the ngrok dashboard, claim your free static domain (**Domains**).
+3. Set `PUBLIC_SITE_URL=https://<your-domain>` in `.env.local`.
+4. Build the image and create the container (in the Podman machine, from the project folder):
+   ```bash
+   podman build -t starhub-rmf:dev .
+   podman run -d --name starhub-rmf --restart unless-stopped --log-driver k8s-file --env-file .env.local -p 8090:8080 starhub-rmf:dev
+   ```
+   `--log-driver k8s-file` keeps the app's output for `podman logs`; the default (journald) loses it in the Podman machine on Windows.
+
+Each time:
+1. Make sure the container is running (`podman start starhub-rmf`, or start it in Podman Desktop).
+2. Run `npm run tunnel` (`https://<your-domain>` → `localhost:8090`) and leave it open.
+3. Use the app at **http://localhost:8090**. Vendors → Keenon → **Live callbacks** shows callbacks as they arrive.
+
+Callbacks only arrive while the container and the tunnel are running. Log lines from callback actions (e.g. `elevator step received`) are in `podman logs -f starhub-rmf`, or in the container's Logs tab in Podman Desktop. ngrok's inspector at http://127.0.0.1:4040 shows every request that reached the tunnel, including ones the app refused (404s are not logged in the app). Once the app is deployed, change the URL at Keenon to the deployed hostname.
+
+**After changing code**, the container still runs the old image. Rebuild it and re-create the container:
+```bash
+podman build -t starhub-rmf:dev .
+podman rm -f starhub-rmf
+podman run -d --name starhub-rmf --restart unless-stopped --log-driver k8s-file --env-file .env.local -p 8090:8080 starhub-rmf:dev
+```
+
+**While writing code**, dev mode avoids the rebuilds: run `npm run dev` (pages on http://localhost:5173, API on :8080, both reload on changes) and `npm run tunnel:dev` (tunnel → :8080) instead. Both modes use the same database, so settings like **Enabled** are shared.
+
 ## Scripts
 | Command | What it does |
 |---|---|
@@ -185,6 +221,8 @@ npm run keenon:callbacks -- --url <callback URL> [--secret <client secret>]   # 
 | `npm run create-user` | Create or reset an account from the command line |
 | `npm run keenon:mock` | Fake Keenon Cloud for local testing |
 | `npm run keenon:callbacks` | Send example Keenon callbacks to a webhook URL |
+| `npm run tunnel` | ngrok tunnel to the Podman container (:8090), for real vendor callbacks |
+| `npm run tunnel:dev` | ngrok tunnel to the `npm run dev` API server (:8080) |
 
 ## Security notes
 - Sessions are HS256 JWTs in an `HttpOnly; SameSite=Strict` cookie, valid for 12 hours. Every request re-checks the account in the database, so a deleted account is signed out immediately.

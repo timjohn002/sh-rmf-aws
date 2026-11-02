@@ -137,13 +137,21 @@ describe('interpretation', () => {
     'AddCleanStrategy',
     'UpdateCleanStrategy',
     'DeleteCleanStrategy',
-    'openAdapt',
   ] as KeenonFixtureName[])('%s → logged only', (name) => {
     expect(run(name)).toMatchObject({ eventType: name, status: 'ignored', patch: null })
   })
 
-  it('openAdapt keeps the robot id from deviceName', () => {
-    expect(run('openAdapt').robotExternalId).toBe('20:F4:1B:DD:2D:3F')
+  it('openAdapt → elevator step type, robot from deviceName, no robot update', () => {
+    expect(run('openAdapt')).toEqual({
+      eventType: 'openAdapt/QueryElevatorGroup',
+      robotExternalId: '20:F4:1B:DD:2D:3F',
+      patch: null,
+      status: 'processed',
+    })
+  })
+
+  it('openAdapt without an action keeps the bare type', () => {
+    expect(interpretKeenonCallback({ bizType: 'openAdapt', data: { deviceName: 'R1' } }).eventType).toBe('openAdapt')
   })
 
   it('robot callbacks without an SN are ignored', () => {

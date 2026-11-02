@@ -15,7 +15,9 @@
     "job:maintenance": "node --env-file=.env.local dist-server/maintenance.mjs",
     "create-user": "tsx --env-file=.env.local scripts/create-user.ts",
     "keenon:mock": "tsx scripts/keenon-mock.ts",
-    "keenon:callbacks": "tsx scripts/keenon-send-callbacks.ts"
+    "keenon:callbacks": "tsx scripts/keenon-send-callbacks.ts",
+    "tunnel": "tsx --env-file=.env.local scripts/tunnel.ts",
+    "tunnel:dev": "tsx --env-file=.env.local scripts/tunnel.ts --port 8080"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
