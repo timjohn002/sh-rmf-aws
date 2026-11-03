@@ -242,3 +242,154 @@ export interface MapRobotsResponse {
   /** Vendor problems, e.g. the vendor's cloud couldn't be reached. */
   warnings: string[]
 }
+
+// ---------------------------------------------------------------------------
+// Elevators (LiftMind D Mode over MQTT)
+// ---------------------------------------------------------------------------
+
+/** The saved CA certificate, as the page shows it. */
+export interface CaCertInfo {
+  subject: string
+  issuer: string
+  valid_to: string
+  expired: boolean
+}
+
+/** LiftMind connection settings as the browser sees them: the password is masked. */
+export interface LiftMindConnectionView {
+  enabled: boolean
+  mqtt_host: string
+  mqtt_port: number
+  use_tls: boolean
+  client_id_prefix: string
+  manufacturer_id: string
+  username: string
+  password: SecretState
+  ca_cert: CaCertInfo | null
+  updated_at: string | null
+}
+
+export interface LiftMindConnectionUpdate {
+  enabled?: boolean
+  mqtt_host?: string
+  mqtt_port?: number
+  use_tls?: boolean
+  client_id_prefix?: string
+  manufacturer_id?: string
+  username?: string
+  /** Only replaced when non-empty. */
+  password?: string
+  /** PEM text; null removes it. */
+  ca_cert?: string | null
+}
+
+/** An app floor a lift serves, with LiftMind's name for it (1F, B1F, G…). */
+export interface ElevatorFloor {
+  floor_id: string
+  liftmind_floor: string
+}
+
+/** A LiftMind robot allowed to use a lift, optionally linked to an app robot. */
+export interface ElevatorRobot {
+  liftmind_robot_id: string
+  robot_id: string | null
+}
+
+export interface Elevator {
+  id: string
+  name: string
+  elevator_uuid: string
+  lobby_uuid: string | null
+  enabled: boolean
+  floors: ElevatorFloor[]
+  robots: ElevatorRobot[]
+  created_at: string
+  updated_at: string
+}
+
+export type ElevatorInput = Pick<Elevator, 'name' | 'elevator_uuid' | 'lobby_uuid' | 'enabled' | 'floors' | 'robots'>
+
+export interface ElevatorsResponse {
+  connection: LiftMindConnectionView
+  elevators: Elevator[]
+}
+
+export interface ElevatorImportResult {
+  elevators_created: number
+  elevators_updated: number
+  robots: number
+}
+
+export type LiftMindState = 'not_configured' | 'disabled' | 'connecting' | 'online' | 'offline' | 'error'
+
+/** One MQTT message to or from LiftMind. */
+export interface LiftMindMessage {
+  id: number
+  at: string
+  direction: 'in' | 'out'
+  topic: string
+  payload: unknown
+}
+
+export type TestRideStage =
+  | 'requested'
+  | 'dispatched'
+  | 'at_start'
+  | 'entered'
+  | 'at_destination'
+  | 'done'
+  | 'pending_recovery'
+  | 'recovering'
+  | 'rejected'
+  | 'aborted'
+  | 'cancelled'
+
+/** A ride started from the Elevators page, where the user plays the robot's part. */
+export interface TestRide {
+  uuid: string
+  elevator_id: string
+  elevator_name: string
+  robot: string
+  /** LiftMind floor names. */
+  from_floor: string
+  to_floor: string
+  stage: TestRideStage
+  /** Elevator LiftMind assigned (ELEVATOR_RESPONSE). */
+  assigned_elevator: string | null
+  /** Latest rejection, abort or failure reason. */
+  reason: string | null
+  /** Which step failed, while recovering. */
+  failed_step: 'enter' | 'exit' | null
+  recovery_floor: string | null
+  started_at: string
+  updated_at: string
+  history: { at: string; stage: TestRideStage; note: string }[]
+}
+
+export interface ElevatorsLive {
+  state: LiftMindState
+  error: string | null
+  /** LiftMind cloud service status (liftmind/service/robot/status). */
+  service: 'online' | 'offline' | null
+  client_id: string | null
+  ride: TestRide | null
+  messages: LiftMindMessage[]
+}
+
+export interface ElevatorCheckResult {
+  ok: boolean
+  queue_length: Record<string, number | null> | null
+  reason: string | null
+}
+
+export interface TestRideStart {
+  robot: string
+  from_floor_id: string
+  to_floor_id: string
+  separated: boolean
+}
+
+export type TestRideAction =
+  | { action: 'entered' | 'exited'; ok: boolean }
+  | { action: 'recover'; to_floor: string }
+  | { action: 'cancel' | 'clear' }

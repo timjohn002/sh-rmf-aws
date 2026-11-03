@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { serve } from '@hono/node-server'
 import { applyForwardedHeaders, createApp, logJson } from './app'
 import { db } from './lib/supabaseAdmin'
+import { syncLiftMind } from './elevators/store'
 import { ROUTES } from './routes'
 import { VENDORS } from './vendors/index'
 import { getConfigCached } from './vendors/store'
@@ -22,6 +23,11 @@ const app = createApp({ routes: ROUTES, staticDir, ready })
 
 // Load vendor configs now, so even the first callback is answered without waiting on the database.
 for (const vendor of VENDORS) getConfigCached(vendor.id).catch(() => {})
+// Connect to LiftMind (elevators) if it's set up; problems show on the Elevators page. Re-check
+// the saved settings every 30 s, so Connect/Disconnect pressed on another copy of the app (sharing
+// the database) applies here too. Only a real change reconnects.
+void syncLiftMind()
+setInterval(() => void syncLiftMind(), 30_000).unref()
 
 const server = serve(
   { fetch: (req) => app.fetch(trustProxy ? applyForwardedHeaders(req) : req), port },
