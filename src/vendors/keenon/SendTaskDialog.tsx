@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, ErrorBox, Modal, SelectField, Spinner, errorMessage } from '../../components/ui'
@@ -15,8 +16,8 @@ export function KeenonRobotActions({ robot }: { robot: Robot }) {
 
   const task = robot.current_task
   const running = !!task?.task_no && task.type === 'Remote call' && !FINISHED.has(task.state)
-  const why =
-    robot.online === false ? 'The robot is offline' : robot.can_be_called === false ? 'Keenon reports the robot can’t be called right now' : undefined
+  // Whether Keenon accepts a call is checked live when the dialog opens (the stored flag can be stale).
+  const why = robot.online === false ? 'The robot is offline' : undefined
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -51,6 +52,13 @@ export function SendTaskDialog({ robot, onClose }: { robot: Robot; onClose: () =
   const [selected, setSelected] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [sent, setSent] = useState<KeenonTaskSent | null>(null)
+  const queryClient = useQueryClient()
+  const callable = floors.data?.can_be_called ?? null
+
+  // Opening the dialog asks Keenon whether the robot is callable and saves it: refresh the Robots page.
+  useEffect(() => {
+    if (floors.data) queryClient.invalidateQueries({ queryKey: ['robots'] })
+  }, [floors.data, queryClient])
 
   // Start on the floor the robot is on (or the first one).
   useEffect(() => {
@@ -179,13 +187,33 @@ export function SendTaskDialog({ robot, onClose }: { robot: Robot; onClose: () =
           </>
         )}
 
+        {floors.data && (
+          <div
+            className={
+              callable === false
+                ? 'flex flex-wrap items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900'
+                : 'flex flex-wrap items-center gap-2 text-sm text-slate-600'
+            }
+          >
+            <span className="flex-1">
+              {callable === true
+                ? 'Keenon: the robot can take a call now.'
+                : callable === false
+                  ? 'Keenon says the robot can’t be called right now (busy, not idle, or remote call turned off in its app).'
+                  : `Couldn't check with Keenon whether the robot is callable${floors.data.status_error ? `: ${floors.data.status_error}` : '.'}`}
+            </span>
+            <Button variant="ghost" size="sm" disabled={floors.isFetching} onClick={() => floors.refetch()}>
+              {floors.isFetching ? 'Checking…' : 'Check again'}
+            </Button>
+          </div>
+        )}
         <p className="text-xs text-slate-500">
           Keenon only takes the task if the robot is deployed, remote call is turned on in the robot's app, and the robot is
           idle. Calls only work from an IP address Keenon has whitelisted.
         </p>
         {send.error && <ErrorBox title="Keenon refused the task">{errorMessage(send.error)}</ErrorBox>}
         <div className="flex gap-2">
-          <Button type="submit" disabled={!point || send.isPending}>
+          <Button type="submit" disabled={!point || send.isPending || callable === false}>
             {send.isPending ? 'Sending…' : point ? `Send to ${point.name}` : 'Send'}
           </Button>
           <Button variant="ghost" onClick={onClose}>

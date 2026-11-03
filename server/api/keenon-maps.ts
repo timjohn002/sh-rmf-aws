@@ -17,7 +17,15 @@ import { HttpError, handler, json, methodNotAllowed, parseBody, requireAdmin } f
 import { db } from '../lib/supabaseAdmin'
 import { VendorApiError } from '../vendors/errors'
 import { keenonAdapter, keenonClientFor } from '../vendors/keenon/adapter'
-import { callTask, cancelCallTask, getMapPoints, getRobotLocation, getScenes, getTargets } from '../vendors/keenon/api'
+import {
+  callTask,
+  cancelCallTask,
+  getMapPoints,
+  getRobotLocation,
+  getRobotStatus,
+  getScenes,
+  getTargets,
+} from '../vendors/keenon/api'
 import { discoverRobotMaps, locationToPosition } from '../vendors/keenon/mapDiscovery'
 import { currentScene, type SceneRow } from '../vendors/keenon/scene'
 import { cachedTargets, callTaskBody, taskTargets } from '../vendors/keenon/tasks'
@@ -452,9 +460,30 @@ async function taskFloors(robotId: string): Promise<KeenonTaskFloors> {
     .eq('scene_code', sceneCode)
     .order('floor')
   if (error) throw error
+
+  // Ask Keenon whether the robot can take a call now. The stored flag only changes on
+  // RobotWorkState callbacks, so it can be stale; save the fresh answer for the Robots page.
+  let canBeCalled: boolean | null = null
+  let statusError: string | null = null
+  try {
+    const status = await getRobotStatus(await keenonClient(), robot.external_id)
+    if (typeof status?.canBeCalled === 'boolean') {
+      canBeCalled = status.canBeCalled
+      const patch: { can_be_called: boolean; online?: boolean } = { can_be_called: canBeCalled }
+      if (typeof status.onlineStatus === 'boolean') patch.online = status.onlineStatus
+      const { error: saveError } = await db().from('robots').update(patch).eq('id', robot.id)
+      if (saveError) throw saveError
+    }
+  } catch (err) {
+    if (!(err instanceof VendorApiError) && !(err instanceof HttpError)) throw err
+    statusError = err.message
+  }
+
   const current = robot.position?.floor ?? null
   return {
     scene_code: sceneCode,
+    can_be_called: canBeCalled,
+    status_error: statusError,
     floors: (data as { floor: number; floor_label: string | null }[]).map((f) => ({
       floor: f.floor,
       label: f.floor_label,

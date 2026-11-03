@@ -165,6 +165,10 @@ export interface KeenonTaskFloor {
 export interface KeenonTaskFloors {
   scene_code: string | null
   floors: KeenonTaskFloor[]
+  /** Keenon's live `canBeCalled` (scene/v1/robot/status), checked when the dialog opens; null if unknown. */
+  can_be_called: boolean | null
+  /** Why the live check failed, if it did. */
+  status_error: string | null
 }
 
 export interface KeenonTaskSent {
