@@ -6,7 +6,6 @@ import type { ElevatorsLive, LiftMindConnectionUpdate, LiftMindConnectionView } 
 import { Badge, Button, Card, ErrorBox, TextField, Toggle, errorMessage } from '../ui'
 
 interface Draft {
-  enabled: boolean
   mqtt_host: string
   mqtt_port: string
   use_tls: boolean
@@ -20,7 +19,6 @@ interface Draft {
 
 function draftFrom(c: LiftMindConnectionView): Draft {
   return {
-    enabled: c.enabled,
     mqtt_host: c.mqtt_host,
     mqtt_port: String(c.mqtt_port),
     use_tls: c.use_tls,
@@ -41,6 +39,7 @@ async function readFile(e: ChangeEvent<HTMLInputElement>): Promise<string | null
 /** LiftMind MQTT connection: status, settings, CA certificate and setting.json import. */
 export function ConnectionCard({ connection, live }: { connection: LiftMindConnectionView; live?: ElevatorsLive }) {
   const save = useSaveConnection()
+  const toggle = useSaveConnection()
   const importSettings = useImportSettings()
   const [draft, setDraft] = useState(() => draftFrom(connection))
   const [importNote, setImportNote] = useState<string | null>(null)
@@ -48,19 +47,32 @@ export function ConnectionCard({ connection, live }: { connection: LiftMindConne
   const settingsInput = useRef<HTMLInputElement>(null)
   const certInput = useRef<HTMLInputElement>(null)
 
-  // Saving or importing changes the saved settings: start again from them.
-  useEffect(() => setDraft(draftFrom(connection)), [connection])
+  // When the saved settings change (import, Connect/Disconnect, another tab), follow them unless
+  // the form has unsaved edits. After the user's own Save the form is reset in onSuccess.
+  const lastSaved = useRef(JSON.stringify(draftFrom(connection)))
+  useEffect(() => {
+    const next = draftFrom(connection)
+    setDraft((d) => (JSON.stringify(d) === lastSaved.current ? next : d))
+    lastSaved.current = JSON.stringify(next)
+  }, [connection])
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }))
   const saved = draftFrom(connection)
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved)
   const port = Number(draft.mqtt_port)
   const state = CONNECTION_STATE[live?.state ?? 'not_configured']
+  // Connect/Disconnect acts on the saved settings.
+  const configured = !!connection.mqtt_host && !!connection.manufacturer_id
+  const on = connection.enabled && configured
+  const connectHint = !configured
+    ? 'Fill in and save the connection details first.'
+    : !on && dirty
+      ? 'Connect uses the saved settings. Save your changes first to use them.'
+      : null
 
   function submit(e: FormEvent) {
     e.preventDefault()
     const update: LiftMindConnectionUpdate = {
-      enabled: draft.enabled,
       mqtt_host: draft.mqtt_host,
       mqtt_port: port,
       use_tls: draft.use_tls,
@@ -70,7 +82,7 @@ export function ConnectionCard({ connection, live }: { connection: LiftMindConne
       ...(draft.password ? { password: draft.password } : {}),
       ...(draft.ca_cert !== undefined ? { ca_cert: draft.ca_cert } : {}),
     }
-    save.mutate(update)
+    save.mutate(update, { onSuccess: (data) => setDraft(draftFrom(data.connection)) })
   }
 
   async function onSettingsFile(e: ChangeEvent<HTMLInputElement>) {
@@ -101,11 +113,24 @@ export function ConnectionCard({ connection, live }: { connection: LiftMindConne
       title="LiftMind connection"
       description="MQTT connection to Owlsome Tech's LiftMind elevator control (D Mode). Ask Owlsome Tech for these details."
       actions={
-        <div className="flex items-center gap-2">
-          <Badge tone={state.tone}>MQTT: {state.label}</Badge>
-          {live?.service && (
-            <Badge tone={live.service === 'online' ? 'green' : 'red'}>LiftMind service: {live.service}</Badge>
-          )}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Badge tone={state.tone}>MQTT: {state.label}</Badge>
+            {live?.service && (
+              <Badge tone={live.service === 'online' ? 'green' : 'red'}>LiftMind service: {live.service}</Badge>
+            )}
+            <Button
+              size="sm"
+              variant={on ? 'danger' : 'primary'}
+              disabled={toggle.isPending || (!on && !configured)}
+              title={connectHint ?? undefined}
+              onClick={() => toggle.mutate({ enabled: !on })}
+            >
+              {toggle.isPending ? (on ? 'Disconnecting…' : 'Connecting…') : on ? 'Disconnect' : 'Connect'}
+            </Button>
+          </div>
+          {connectHint && <span className="text-xs text-slate-500">{connectHint}</span>}
+          {toggle.error && <span className="text-xs text-red-700">{errorMessage(toggle.error)}</span>}
         </div>
       }
     >
@@ -173,15 +198,12 @@ export function ConnectionCard({ connection, live }: { connection: LiftMindConne
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-6">
-          <Toggle
-            checked={draft.use_tls}
-            onChange={(v) => set('use_tls', v)}
-            label="Use TLS"
-            description="Always on for LiftMind. Off only for the local fake (npm run liftmind:mock)."
-          />
-          <Toggle checked={draft.enabled} onChange={(v) => set('enabled', v)} label="Enabled" description="Off disconnects from LiftMind." />
-        </div>
+        <Toggle
+          checked={draft.use_tls}
+          onChange={(v) => set('use_tls', v)}
+          label="Use TLS"
+          description="Always on for LiftMind. Off only for the local fake (npm run liftmind:mock)."
+        />
 
         {save.error && <ErrorBox>{errorMessage(save.error)}</ErrorBox>}
         {(importSettings.error || readError) && (
@@ -191,8 +213,9 @@ export function ConnectionCard({ connection, live }: { connection: LiftMindConne
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" disabled={!dirty || save.isPending || !(port >= 1 && port <= 65535)}>
-            {save.isPending ? 'Saving…' : 'Save & connect'}
+            {save.isPending ? 'Saving…' : 'Save'}
           </Button>
+          {on && dirty && <span className="text-xs text-slate-500">Reconnects with the new settings.</span>}
           {dirty && (
             <Button variant="ghost" onClick={() => setDraft(saved)}>
               Discard changes

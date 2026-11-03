@@ -264,17 +264,22 @@ export async function liftmindSettings(): Promise<LiftMindSettings> {
 }
 
 let applied: string | null = null
+let lastError: string | null = null
 
 /** Reconnect when the saved settings (incl. the robot list) changed; never throws. */
 export async function syncLiftMind(): Promise<void> {
   try {
     const settings = await liftmindSettings()
+    lastError = null
     const key = JSON.stringify(settings)
     if (key === applied) return
     applied = key
     await liftmind.configure(settings)
   } catch (err) {
     applied = null
-    logJson('error', 'liftmind settings could not be applied', { error: err instanceof Error ? err.message : String(err) })
+    const message = err instanceof Error ? err.message : String(err)
+    // Called every 30 s: log a failure once, not on every attempt.
+    if (message !== lastError) logJson('error', 'liftmind settings could not be applied', { error: message })
+    lastError = message
   }
 }

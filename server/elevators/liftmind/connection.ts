@@ -69,16 +69,14 @@ export class LiftMindLink {
 
   /** (Re)connect with these settings. Missing, incomplete or disabled settings just disconnect. */
   async configure(settings: LiftMindSettings | null): Promise<void> {
+    const wasConnected = !!this.client
     await this.disconnect()
     this.settings = settings
     this.service = null
     this.error = null
-    if (!settings || !isComplete(settings)) {
-      this.state = 'not_configured'
-      return
-    }
-    if (!settings.enabled) {
-      this.state = 'disabled'
+    if (!settings || !isComplete(settings) || !settings.enabled) {
+      this.state = settings && isComplete(settings) ? 'disabled' : 'not_configured'
+      if (wasConnected) logJson('info', 'liftmind disconnected', { reason: this.state })
       return
     }
 
