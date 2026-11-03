@@ -1,4 +1,4 @@
-import type { KeenonClient } from './client'
+import { type KeenonClient, KeenonError } from './client'
 import type { KeenonRobot, KeenonRobotStatus, KeenonStore } from './types'
 
 /** Keenon returns lists either bare or wrapped as `{ list: [...] }`. */
@@ -129,4 +129,56 @@ export function parseKeenonLocation(data: unknown): KeenonLocation | null {
 
 export async function getRobotLocation(client: KeenonClient, robotSn: string): Promise<KeenonLocation | null> {
   return parseKeenonLocation(await client.get<unknown>('/api/open/custom/robot/location', { robotSn }))
+}
+
+// ---------------------------------------------------------------------------
+// Remote call tasks (send a robot to a point)
+// ---------------------------------------------------------------------------
+
+/** A scene point from `/scene/v1/target/list`: has the uuid/pointId a call needs, but no type. */
+export interface KeenonTarget {
+  /** Same value as the map point's `id` (map/position). */
+  id: string
+  uuid: string
+  pointId: string
+  name: string | null
+  area: string | null
+}
+
+export async function getTargets(client: KeenonClient, sceneCode: string): Promise<KeenonTarget[]> {
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : null)
+  const rows = asList<Record<string, unknown>>(await client.get('/api/open/scene/v1/target/list', { sceneCode }))
+  const targets: KeenonTarget[] = []
+  for (const r of rows) {
+    const uuid = text(r.uuid)
+    const pointId = text(r.pointId) ?? text(r.id)
+    const id = text(r.id) ?? pointId
+    if (!uuid || !pointId || !id) continue
+    targets.push({ id, uuid, pointId, name: text(r.pointName) ?? text(r.name), area: text(r.area) })
+  }
+  return targets
+}
+
+export interface KeenonCallTaskBody {
+  uuid: string
+  pointId: string
+  storeId: string
+  sceneCode: string
+  robotId: string
+}
+
+/** `POST /scene/v3/robot/call/task`: send a robot to a point. */
+export async function callTask(
+  client: KeenonClient,
+  body: KeenonCallTaskBody,
+): Promise<{ taskNo: string; waitQueuing: number | null }> {
+  const data = await client.post<{ taskNo?: unknown; waitQueuing?: unknown }>('/api/open/scene/v3/robot/call/task', body)
+  const taskNo = data?.taskNo != null ? String(data.taskNo) : ''
+  if (!taskNo) throw new KeenonError(null, 'Keenon accepted the call but returned no task number')
+  return { taskNo, waitQueuing: typeof data?.waitQueuing === 'number' ? data.waitQueuing : null }
+}
+
+/** `DELETE /scene/v1/robot/call/task?taskNo=`: cancel a remote call task. */
+export async function cancelCallTask(client: KeenonClient, taskNo: string): Promise<void> {
+  await client.delete('/api/open/scene/v1/robot/call/task', { taskNo })
 }

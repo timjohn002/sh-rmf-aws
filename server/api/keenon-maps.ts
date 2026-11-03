@@ -1,11 +1,15 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { RobotPosition } from '../../src/types/api'
-import type {
-  KeenonRobotFloor,
-  KeenonRobotMapSummary,
-  KeenonRobotMapsDetail,
-  KeenonScene,
+import {
+  canTakeTasks,
+  type KeenonRobotFloor,
+  type KeenonRobotMapSummary,
+  type KeenonRobotMapsDetail,
+  type KeenonScene,
+  type KeenonTaskFloors,
+  type KeenonTaskPoints,
+  type KeenonTaskSent,
 } from '../../src/vendors/keenon/shared'
 import { sampleErrors, type PositionAlignment } from '../../src/vendors/keenon/alignment'
 import { fitTransform, pairErrors, type CalibrationPair, type PlanTransform } from '../../src/vendors/keenon/calibration'
@@ -13,10 +17,19 @@ import { HttpError, handler, json, methodNotAllowed, parseBody, requireAdmin } f
 import { db } from '../lib/supabaseAdmin'
 import { VendorApiError } from '../vendors/errors'
 import { keenonAdapter, keenonClientFor } from '../vendors/keenon/adapter'
-import { getRobotLocation, getScenes } from '../vendors/keenon/api'
+import {
+  callTask,
+  cancelCallTask,
+  getMapPoints,
+  getRobotLocation,
+  getRobotStatus,
+  getScenes,
+  getTargets,
+} from '../vendors/keenon/api'
 import { discoverRobotMaps, locationToPosition } from '../vendors/keenon/mapDiscovery'
 import { currentScene, type SceneRow } from '../vendors/keenon/scene'
-import { contextFor, loadConfig } from '../vendors/store'
+import { cachedTargets, callTaskBody, taskTargets } from '../vendors/keenon/tasks'
+import { applyRobotPatch, contextFor, loadConfig } from '../vendors/store'
 
 // Keenon-only: which floors (maps) each Keenon robot knows, and which app floor each matches.
 
@@ -414,6 +427,124 @@ async function locate(robotId: string): Promise<Response> {
   return json(position)
 }
 
+// ---------------------------------------------------------------------------
+// Send task: send an S100 robot to a "normal" map point (remote call, v3)
+// ---------------------------------------------------------------------------
+
+const FINISHED_TASK_STATES = new Set(['completed', 'cancelled', 'failed'])
+
+const sendTaskSchema = z.object({
+  uuid: z.string().trim().min(1).max(200),
+  point_id: z.string().trim().min(1).max(200),
+  point_name: z.string().trim().max(200).default(''),
+})
+
+/** The robot, checked to be an S100 with a store and a current scene. */
+async function taskRobot(robotId: string): Promise<{ robot: RobotRow; sceneCode: string }> {
+  const robot = await loadRobot(robotId)
+  if (!canTakeTasks(robot.model)) {
+    throw new HttpError(400, `Tasks can only be sent to S100 robots (this one is ${robot.model ?? 'an unknown model'}).`)
+  }
+  if (!robot.store_external_id) throw new HttpError(400, 'This robot has no store yet. Run Sync on Vendors → Keenon.')
+  const sceneCode = currentScene(await loadScene(robot.id)).code
+  if (!sceneCode) throw new HttpError(400, "The robot's scene isn't known yet. Discover its floors on its map page first.")
+  return { robot, sceneCode }
+}
+
+async function taskFloors(robotId: string): Promise<KeenonTaskFloors> {
+  const { robot, sceneCode } = await taskRobot(robotId)
+  const { data, error } = await db()
+    .from('keenon_robot_floors')
+    .select('floor, floor_label')
+    .eq('robot_id', robot.id)
+    .eq('scene_code', sceneCode)
+    .order('floor')
+  if (error) throw error
+
+  // Ask Keenon whether the robot can take a call now. The stored flag only changes on
+  // RobotWorkState callbacks, so it can be stale; save the fresh answer for the Robots page.
+  let canBeCalled: boolean | null = null
+  let statusError: string | null = null
+  try {
+    const status = await getRobotStatus(await keenonClient(), robot.external_id)
+    if (typeof status?.canBeCalled === 'boolean') {
+      canBeCalled = status.canBeCalled
+      const patch: { can_be_called: boolean; online?: boolean } = { can_be_called: canBeCalled }
+      if (typeof status.onlineStatus === 'boolean') patch.online = status.onlineStatus
+      const { error: saveError } = await db().from('robots').update(patch).eq('id', robot.id)
+      if (saveError) throw saveError
+    }
+  } catch (err) {
+    if (!(err instanceof VendorApiError) && !(err instanceof HttpError)) throw err
+    statusError = err.message
+  }
+
+  const current = robot.position?.floor ?? null
+  return {
+    scene_code: sceneCode,
+    can_be_called: canBeCalled,
+    status_error: statusError,
+    floors: (data as { floor: number; floor_label: string | null }[]).map((f) => ({
+      floor: f.floor,
+      label: f.floor_label,
+      current: current !== null && String(f.floor) === String(current),
+    })),
+  }
+}
+
+async function taskPoints(robotId: string, req: Request): Promise<KeenonTaskPoints> {
+  const { sceneCode } = await taskRobot(robotId)
+  const params = new URL(req.url).searchParams
+  const floor = Number(params.get('floor'))
+  if (!Number.isInteger(floor)) throw new HttpError(400, 'Choose a floor')
+  const client = await keenonClient()
+  // One after the other: Keenon rate-limits by client and IP.
+  const mapPoints = await callKeenon(() => getMapPoints(client, sceneCode, floor))
+  const targets = await callKeenon(() =>
+    cachedTargets(sceneCode, () => getTargets(client, sceneCode), { refresh: params.get('refresh') === '1' }),
+  )
+  return { scene_code: sceneCode, floor, ...taskTargets(mapPoints, targets) }
+}
+
+async function sendTask(robotId: string, req: Request): Promise<KeenonTaskSent> {
+  const input = await parseBody(req, sendTaskSchema)
+  const { robot, sceneCode } = await taskRobot(robotId)
+  const client = await keenonClient()
+  const sent = await callKeenon(() =>
+    callTask(
+      client,
+      callTaskBody({ point: input, storeId: robot.store_external_id!, sceneCode, robotSn: robot.external_id }),
+    ),
+  )
+  // Show it on the Robots page now; Keenon's CreateTask callbacks take over from here.
+  await applyRobotPatch(keenonAdapter.id, robot.external_id, {
+    current_task: {
+      source: 'CreateTask',
+      task_no: sent.taskNo,
+      state: 'queued',
+      type: 'Remote call',
+      error_code: null,
+      error_message: null,
+      detail: { point_name: input.point_name || null, queue_position: sent.waitQueuing, sent_from: 'app' },
+      updated_at: new Date().toISOString(),
+    },
+  })
+  return { task_no: sent.taskNo, queue_position: sent.waitQueuing }
+}
+
+async function cancelTask(robotId: string): Promise<Response> {
+  const { robot } = await taskRobot(robotId)
+  const { data, error } = await db().from('robots').select('current_task').eq('id', robot.id).single()
+  if (error) throw error
+  const task = (data as { current_task: { task_no?: string | null; state?: string } | null }).current_task
+  if (!task?.task_no || FINISHED_TASK_STATES.has(task.state ?? '')) {
+    throw new HttpError(409, 'The robot has no running task to cancel.')
+  }
+  const client = await keenonClient()
+  await callKeenon(() => cancelCallTask(client, task.task_no!))
+  return json({ ok: true, task_no: task.task_no })
+}
+
 export default handler(async (req) => {
   await requireAdmin(req)
   // /api/keenon/<section>/<id>/<action>; parsed by hand so one handler serves every shape.
@@ -438,6 +569,18 @@ export default handler(async (req) => {
       case 'locate':
         if (req.method !== 'POST') methodNotAllowed()
         return locate(id)
+      case 'task-floors':
+        if (req.method !== 'GET') methodNotAllowed()
+        return json(await taskFloors(id))
+      case 'task-points':
+        if (req.method !== 'GET') methodNotAllowed()
+        return json(await taskPoints(id, req))
+      case 'task':
+        if (req.method !== 'POST') methodNotAllowed()
+        return json(await sendTask(id, req))
+      case 'task-cancel':
+        if (req.method !== 'POST') methodNotAllowed()
+        return cancelTask(id)
     }
   }
   if (section === 'stores' && id && action === 'scenes') {

@@ -3,7 +3,15 @@ import { api } from '../../lib/api'
 import type { RobotPosition } from '../../types/api'
 import type { AlignmentSample } from './alignment'
 import type { CalibrationPair } from './calibration'
-import type { KeenonRobotFloor, KeenonRobotMapSummary, KeenonRobotMapsDetail, KeenonScene } from './shared'
+import type {
+  KeenonRobotFloor,
+  KeenonRobotMapSummary,
+  KeenonRobotMapsDetail,
+  KeenonScene,
+  KeenonTaskFloors,
+  KeenonTaskPoints,
+  KeenonTaskSent,
+} from './shared'
 
 const ROBOTS_KEY = ['keenon-maps', 'robots']
 const detailKey = (robotId: string) => ['keenon-maps', 'robot', robotId]
@@ -132,5 +140,54 @@ export function useMatchFloor(robotId: string) {
       )
       queryClient.invalidateQueries({ queryKey: ROBOTS_KEY })
     },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Send task (S100): floors, points and the remote call
+// ---------------------------------------------------------------------------
+
+/** The robot's floors in its current scene (to pick where to send it). */
+export function useTaskFloors(robotId: string) {
+  return useQuery({
+    queryKey: ['keenon-tasks', robotId, 'floors'],
+    queryFn: () => api<KeenonTaskFloors>(`/api/keenon/robots/${robotId}/task-floors`),
+  })
+}
+
+/** "normal" points on one floor that the robot can be sent to, fetched live from Keenon. */
+export function useTaskPoints(robotId: string, floor: number | null) {
+  return useQuery({
+    queryKey: ['keenon-tasks', robotId, 'points', floor],
+    queryFn: () => api<KeenonTaskPoints>(`/api/keenon/robots/${robotId}/task-points?floor=${floor}`),
+    enabled: floor !== null,
+    staleTime: 60_000,
+  })
+}
+
+/** Reload a floor's points, also refreshing the scene's cached target list on the server. */
+export function useRefreshTaskPoints(robotId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (floor: number) =>
+      api<KeenonTaskPoints>(`/api/keenon/robots/${robotId}/task-points?floor=${floor}&refresh=1`),
+    onSuccess: (data, floor) => queryClient.setQueryData(['keenon-tasks', robotId, 'points', floor], data),
+  })
+}
+
+export function useSendTask(robotId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (point: { uuid: string; point_id: string; point_name: string }) =>
+      api<KeenonTaskSent>(`/api/keenon/robots/${robotId}/task`, { method: 'POST', body: point }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['robots'] }),
+  })
+}
+
+export function useCancelTask(robotId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<{ ok: true; task_no: string }>(`/api/keenon/robots/${robotId}/task-cancel`, { method: 'POST' }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['robots'] }),
   })
 }

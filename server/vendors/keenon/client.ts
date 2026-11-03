@@ -83,6 +83,10 @@ export class KeenonClient {
     return this.call<T>('POST', path, { body, query })
   }
 
+  delete<T>(path: string, query?: Query): Promise<T> {
+    return this.call<T>('DELETE', path, { query })
+  }
+
   /** Authenticated call; unwraps `{code, msg, data}` and retries once on an expired token. */
   private async call<T>(
     method: string,
