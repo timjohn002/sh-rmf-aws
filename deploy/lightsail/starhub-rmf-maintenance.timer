@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Starhub RMF maintenance every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+# Catch up after the instance was off at the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

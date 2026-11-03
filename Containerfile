@@ -1,4 +1,4 @@
-# Starhub RMF: web app + API server for Kubernetes (Amazon EKS).
+# Starhub RMF: web app + API server (deployed on AWS Lightsail, see deploy/lightsail/).
 #   podman build -t starhub-rmf:dev .
 #   podman run --rm --env-file .env.local -p 8090:8080 starhub-rmf:dev
 # (host port 8090, so it can run next to `npm run dev` on 8080; `npm run tunnel` forwards to 8090)
