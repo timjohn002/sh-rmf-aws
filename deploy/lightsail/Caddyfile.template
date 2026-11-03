@@ -1,0 +1,6 @@
+# Written to /etc/caddy/Caddyfile by deploy/lightsail/setup.sh (__HOST__ = the public hostname).
+# Caddy gets and renews the HTTPS certificate itself, redirects http:// to https://, and sets
+# X-Forwarded-For/Proto/Host for the app (TRUST_PROXY=true).
+__HOST__ {
+	reverse_proxy 127.0.0.1:8080
+}

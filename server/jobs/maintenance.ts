@@ -3,13 +3,14 @@ import { VENDORS } from '../vendors/index'
 import { EVENT_RETENTION_DAYS, contextFor, loadConfig, persistSync, updateConfig } from '../vendors/store'
 
 /**
- * Hourly housekeeping, run as a Kubernetes CronJob (`node dist-server/maintenance.mjs`):
+ * Hourly housekeeping, run by a systemd timer on the Lightsail instance
+ * (`node dist-server/maintenance.mjs`, see deploy/lightsail/starhub-rmf-maintenance.*):
  *  - delete vendor events older than the retention period;
  *  - re-sync stores/robots for vendors whose `<VENDOR>_SCHEDULED_SYNC=true`.
  *    Off by default: e.g. Keenon only accepts whitelisted IPs, so enable it only
- *    once the cluster's outbound IP is whitelisted.
+ *    once the instance's static IP is whitelisted.
  *
- * Exits non-zero if any step failed, so the CronJob shows the failure.
+ * Exits non-zero if any step failed, so the failure shows in `systemctl status`.
  */
 async function runMaintenance(): Promise<boolean> {
   let ok = true

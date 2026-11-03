@@ -1,0 +1,13 @@
+# Hourly housekeeping (server/jobs/maintenance.ts): deletes old callback logs and, when
+# <VENDOR>_SCHEDULED_SYNC=true, re-syncs robots. Started by starhub-rmf-maintenance.timer.
+[Unit]
+Description=Starhub RMF maintenance (callback log cleanup, scheduled robot sync)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman run --rm --name starhub-rmf-maintenance \
+  --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+  --env-file /etc/starhub-rmf/app.env \
+  localhost/starhub-rmf:latest node --enable-source-maps dist-server/maintenance.mjs

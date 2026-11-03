@@ -25,7 +25,7 @@ Node server in a container (server/)  ── service-role key ──▶  Supabas
 ```
 
 - The browser **never** talks to Supabase with a key. All data goes through the `/api/*` routes, which check the session and role.
-- One container image runs on **Amazon EKS** (Kubernetes): `server/main.ts` (Hono on Node 24) serves the web app and every API route listed in `server/routes.ts`. An hourly CronJob runs `server/jobs/maintenance.ts`.
+- One container image runs on an **AWS Lightsail** instance, behind Caddy for HTTPS: `server/main.ts` (Hono on Node 24) serves the web app and every API route listed in `server/routes.ts`. An hourly systemd timer runs `server/jobs/maintenance.ts`.
 - Accounts live in the `app_users` table, with passwords hashed using **bcrypt**. Supabase Auth and email are not used.
 - Row-level security is enabled with no policies, so the public anon key can't read any table. The `floor-plans` storage bucket is private, and images are shown through 1-hour signed URLs.
 - Floor plan coordinates: each floor stores `scale_m_per_px` and an origin in pixels. World coordinates are in meters, with +Y pointing up (ROS / Open-RMF convention). See `src/lib/coords.ts`.
@@ -90,30 +90,57 @@ The container uses host port 8090 so it can run next to `npm run dev`, which use
 
 Health checks: `/healthz` (process is up) and `/readyz` (database reachable).
 
-## Deploying (Amazon EKS)
-Manifests are in `deploy/` (Kustomize): `deploy/base` is cluster-agnostic, and `deploy/overlays/dev` holds the environment-specific values.
+## Deploying (AWS Lightsail)
+The app runs on one Lightsail **instance** with a **Static IP**. That fixed IP is what Keenon whitelists for API calls; the Lightsail container service has no fixed outbound IP, which is why it isn't used. Everything for the instance is in `deploy/lightsail/`:
 
-The cluster needs the **AWS Load Balancer Controller** (it turns the Ingress into an Application Load Balancer). You also need an **ECR** repository for the image, an **ACM** certificate for the hostname, and a DNS record pointing the hostname at the load balancer.
+| On the instance | What it does |
+|---|---|
+| `starhub-rmf` service (Podman Quadlet, `starhub-rmf.container`) | Runs the app container, restarts it on failure and at boot. Listens on `127.0.0.1:8080` only. |
+| Caddy (`Caddyfile.template`) | HTTPS on ports 80/443 with an automatic Let's Encrypt certificate, forwarding to the app |
+| `starhub-rmf-maintenance.timer` | Runs the maintenance job every hour (old callback logs, optional robot re-sync) |
+| `/etc/starhub-rmf/app.env` | The app's settings and secrets (root-only) |
 
-1. Push the image to ECR. CI does this on every push to `main` once the `AWS_ROLE_ARN` and `ECR_REPOSITORY` repository variables are set (see `.github/workflows/ci.yml`). To push by hand:
+The image is built on the instance from this (public) GitHub repository, so no registry is needed.
+
+**Hostname:** without a domain of your own, use `<static-ip-with-dashes>.sslip.io` (for IP `13.250.1.2`: `13-250-1-2.sslip.io`). It's a free name that resolves to that IP, so HTTPS works with no DNS setup; `setup.sh` uses it by default. To use a real domain later, point its DNS A record at the static IP, set `PUBLIC_SITE_URL` in `app.env`, and re-run `setup.sh <domain>`.
+
+### First deployment
+1. **Create the instance** in the Lightsail console: region **Singapore** (`ap-southeast-1`), **Linux/Unix → OS Only → Ubuntu 24.04 LTS**, the **2 GB** plan.
+2. **Networking** tab of the instance:
+   - Create a **Static IP** and attach it.
+   - IPv4 firewall: allow **HTTP (80)** and **HTTPS (443)**. Restrict **SSH (22)** to your own IP if you can.
+   - **Turn IPv6 off**, unless Keenon also whitelists an IPv6 address. Otherwise calls to Keenon may go out over IPv6 and be refused.
+3. **Connect with SSH** (the browser terminal in the console is fine) and run:
    ```bash
-   aws ecr get-login-password --region ap-southeast-1 | podman login --username AWS --password-stdin <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com
-   podman tag starhub-rmf:dev <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/starhub-rmf:dev
-   podman push <account-id>.dkr.ecr.ap-southeast-1.amazonaws.com/starhub-rmf:dev
+   sudo apt-get install -y git
+   sudo git clone https://github.com/timjohn002/sh-rmf-aws.git /opt/starhub-rmf/src
+   sudo bash /opt/starhub-rmf/src/deploy/lightsail/setup.sh
    ```
-2. In `deploy/overlays/dev/kustomization.yaml`, replace every `CHANGE-ME`: namespace, image, hostname, certificate ARN and `PUBLIC_SITE_URL`.
-3. Copy `deploy/overlays/dev/secret.env.example` to `deploy/overlays/dev/.env.secret` (git-ignored) and fill in the same values as `.env.local`.
-4. `kubectl apply -k deploy/overlays/dev`
-5. Point the hostname's DNS at the load balancer address shown by `kubectl get ingress starhub-rmf -n <namespace>`, then give Keenon the new callback URL (Vendors → Keenon).
+   This installs Podman and Caddy, builds the image and creates `/etc/starhub-rmf/app.env`, then stops.
+4. **Fill in the settings** (`sudo nano /etc/starhub-rmf/app.env`): Supabase URL and key as in your `.env.local`, and a **new** `SESSION_SECRET` (`openssl rand -base64 48`). `PUBLIC_SITE_URL` is already filled in.
+5. **Run `setup.sh` again** (same command). It starts the app and the maintenance timer and ends with `Ready: https://<host>`.
+6. **Keenon:** ask Keenon to whitelist the **static IP**, and change the callback URL in the Keenon portal to `https://<host>/keenon/webhook`. Then stop your local `npm run tunnel`. After the whitelist is active, **Save & test connection** on Vendors → Keenon works, and you can set `KEENON_SCHEDULED_SYNC=true` in `app.env`.
 
-This creates the Deployment (2 replicas), Service, Ingress (internet-facing ALB, TLS at the load balancer), the hourly maintenance CronJob and a PodDisruptionBudget. The container runs as a non-root user with a read-only filesystem.
+### Updating
+After changes are merged to `main`:
+```bash
+sudo bash /opt/starhub-rmf/src/deploy/lightsail/update.sh
+```
+It pulls `main`, rebuilds the image, restarts the app (a few seconds of downtime) and waits until it's ready.
 
-For outbound calls to Keenon, run the nodes in private subnets behind a NAT gateway with an Elastic IP, and have Keenon whitelist that IP. If the cluster enforces network policies, add one that allows port 8080 from the load balancer's subnets.
+### Day to day
+| Task | Command |
+|---|---|
+| App logs (incl. `elevator step received`) | `sudo journalctl -u starhub-rmf -f` |
+| HTTPS / certificate logs | `sudo journalctl -u caddy -n 50` |
+| Is the maintenance job scheduled / did it run? | `systemctl list-timers starhub-rmf-maintenance.timer`, `sudo journalctl -u starhub-rmf-maintenance -n 20` |
+| Restart the app | `sudo systemctl restart starhub-rmf` |
+| Change settings | `sudo nano /etc/starhub-rmf/app.env`, then restart the app |
 
 | Environment variable | Purpose |
 |---|---|
 | `PORT` | Listen port (default `8080`) |
-| `TRUST_PROXY=true` | Use `X-Forwarded-Proto`/`Host` from the load balancer, so cookies get `Secure` and the origin check sees the public URL. Only set it behind a trusted proxy. |
+| `TRUST_PROXY=true` | Use `X-Forwarded-Proto`/`Host` from the reverse proxy (Caddy), so cookies get `Secure` and the origin check sees the public URL. Only set it behind a trusted proxy. |
 
 ## Robot vendors
 Each vendor integration is code. There's one adapter folder per vendor, registered in a list:
@@ -132,7 +159,7 @@ To add a vendor, write an adapter that implements `VendorAdapter`, add it to bot
 
 ### Keenon setup
 1. Run the database migrations (see [First-time setup](#first-time-setup)).
-2. **Keenon only accepts API calls from whitelisted IPs.** Run the app locally on the whitelisted network (`npm run dev`), or whitelist the cluster's fixed outbound IP.
+2. **Keenon only accepts API calls from whitelisted IPs.** Run the app locally on the whitelisted network (`npm run dev`), or have Keenon whitelist the Lightsail instance's static IP.
 3. Go to **Vendors → Keenon** and choose the region:
 
    | Region | Base URL |

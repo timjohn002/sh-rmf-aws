@@ -1,0 +1,27 @@
+# Starhub RMF web app + API on the Lightsail instance, run by systemd through Podman Quadlet.
+# setup.sh installs this to /etc/containers/systemd/; systemd turns it into starhub-rmf.service.
+[Unit]
+Description=Starhub RMF web app and API
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=starhub-rmf
+Image=localhost/starhub-rmf:latest
+# Only Caddy on this machine can reach the app. That matters: with TRUST_PROXY=true the app
+# trusts the X-Forwarded-* headers, so nothing else may talk to it directly.
+PublishPort=127.0.0.1:8080:8080
+EnvironmentFile=/etc/starhub-rmf/app.env
+# Read-only root filesystem (Podman still mounts a writable tmpfs on /tmp).
+ReadOnly=true
+DropCapability=ALL
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+# Matches the server's own shutdown grace (server/main.ts).
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
