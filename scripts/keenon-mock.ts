@@ -137,6 +137,13 @@ const server = createServer(async (req, res) => {
       return send({ code: 610601, msg: 'Use POST' }, 405)
     }
     case '/api/open/scene/v1/robot/call/task': {
+      if (req.method === 'GET') {
+        // Task status query; like Keenon, an unknown task is a parameter error.
+        const taskNo = url.searchParams.get('taskNo') ?? ''
+        const task = tasks.get(taskNo)
+        if (!task) return send({ code: 610601, msg: 'Request parameter exception' })
+        return send(ok({ taskNo, taskStatus: 3, errorCode: 0, taskData: { robotId: task.robotId, remainingDistance: 4.2 } }))
+      }
       if (req.method === 'DELETE') {
         const taskNo = url.searchParams.get('taskNo') ?? ''
         if (!tasks.delete(taskNo)) return send({ code: 610601, msg: 'Task not found' })

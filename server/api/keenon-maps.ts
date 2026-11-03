@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { RobotPosition } from '../../src/types/api'
+import type { RobotPosition, RobotTask } from '../../src/types/api'
 import {
   canTakeTasks,
   type KeenonRobotFloor,
@@ -28,7 +28,15 @@ import {
 } from '../vendors/keenon/api'
 import { discoverRobotMaps, locationToPosition } from '../vendors/keenon/mapDiscovery'
 import { currentScene, type SceneRow } from '../vendors/keenon/scene'
-import { cachedTargets, callTaskBody, taskTargets } from '../vendors/keenon/tasks'
+import { reconcileOpenTasks } from '../vendors/keenon/taskStatus'
+import {
+  cachedTargets,
+  callTaskBody,
+  endedTask,
+  isOpenRemoteCall,
+  isUnknownTaskError,
+  taskTargets,
+} from '../vendors/keenon/tasks'
 import { applyRobotPatch, contextFor, loadConfig } from '../vendors/store'
 
 // Keenon-only: which floors (maps) each Keenon robot knows, and which app floor each matches.
@@ -431,8 +439,6 @@ async function locate(robotId: string): Promise<Response> {
 // Send task: send an S100 robot to a "normal" map point (remote call, v3)
 // ---------------------------------------------------------------------------
 
-const FINISHED_TASK_STATES = new Set(['completed', 'cancelled', 'failed'])
-
 const sendTaskSchema = z.object({
   uuid: z.string().trim().min(1).max(200),
   point_id: z.string().trim().min(1).max(200),
@@ -466,7 +472,8 @@ async function taskFloors(robotId: string): Promise<KeenonTaskFloors> {
   let canBeCalled: boolean | null = null
   let statusError: string | null = null
   try {
-    const status = await getRobotStatus(await keenonClient(), robot.external_id)
+    const client = await keenonClient()
+    const status = await getRobotStatus(client, robot.external_id)
     if (typeof status?.canBeCalled === 'boolean') {
       canBeCalled = status.canBeCalled
       const patch: { can_be_called: boolean; online?: boolean } = { can_be_called: canBeCalled }
@@ -474,6 +481,8 @@ async function taskFloors(robotId: string): Promise<KeenonTaskFloors> {
       const { error: saveError } = await db().from('robots').update(patch).eq('id', robot.id)
       if (saveError) throw saveError
     }
+    // And whether its last task really is still running (Keenon may have stopped reporting it).
+    await reconcileOpenTasks(client, robot.external_id)
   } catch (err) {
     if (!(err instanceof VendorApiError) && !(err instanceof HttpError)) throw err
     statusError = err.message
@@ -536,13 +545,24 @@ async function cancelTask(robotId: string): Promise<Response> {
   const { robot } = await taskRobot(robotId)
   const { data, error } = await db().from('robots').select('current_task').eq('id', robot.id).single()
   if (error) throw error
-  const task = (data as { current_task: { task_no?: string | null; state?: string } | null }).current_task
-  if (!task?.task_no || FINISHED_TASK_STATES.has(task.state ?? '')) {
-    throw new HttpError(409, 'The robot has no running task to cancel.')
-  }
+  const task = (data as { current_task: RobotTask | null }).current_task
+  if (!isOpenRemoteCall(task)) throw new HttpError(409, 'The robot has no running task to cancel.')
+
   const client = await keenonClient()
-  await callKeenon(() => cancelCallTask(client, task.task_no!))
-  return json({ ok: true, task_no: task.task_no })
+  let next: RobotTask
+  try {
+    await cancelCallTask(client, task.task_no)
+    // Keenon doesn't always send a "cancelled" callback, so don't wait for one.
+    next = { ...task, state: 'cancelled', error_message: null, updated_at: new Date().toISOString() }
+  } catch (err) {
+    if (!isUnknownTaskError(err)) {
+      if (err instanceof VendorApiError) throw new HttpError(502, err.message)
+      throw err
+    }
+    next = endedTask(task) // Keenon no longer knows the task: nothing left to cancel
+  }
+  await applyRobotPatch(keenonAdapter.id, robot.external_id, { current_task: next })
+  return json({ ok: true, task_no: task.task_no, state: next.state })
 }
 
 export default handler(async (req) => {

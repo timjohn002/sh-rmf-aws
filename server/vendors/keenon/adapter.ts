@@ -3,6 +3,7 @@ import { KEENON_SECRET_FIELDS, keenonBaseUrl, type KeenonSettings } from '../../
 import type { SyncedRobot, VendorAdapter, VendorConfigRow, VendorContext } from '../types'
 import { getRobots, getStores } from './api'
 import { handleKeenonCallback } from './callbackActions'
+import { reconcileOpenTasks } from './taskStatus'
 import { KeenonClient, KeenonError } from './client'
 import { KEENON_OK, KEENON_ONLINE_TYPE, type KeenonRobot } from './types'
 import { locateKeenonRobots, prepareKeenonPlacer } from './placement'
@@ -140,6 +141,10 @@ export const keenonAdapter: VendorAdapter = {
     // Selected stores, or every store of the account (one extra call) when none are selected.
     const storeIds = store_ids.length ? store_ids : (await getStores(client)).map((s) => s.storeId)
     return fetchStoreRobots(client, storeIds)
+  },
+
+  async refreshTasks(ctx) {
+    await reconcileOpenTasks(keenonClientFor(ctx))
   },
 
   verifyWebhook(config, rawBody, headers) {

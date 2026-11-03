@@ -210,7 +210,9 @@ Only points of type `normal` can be sent to. Keenon splits what a call needs ove
 - `/api/open/custom/robot/map/position` (per floor) gives each point's `type`;
 - `/api/open/scene/v1/target/list` (per scene, cached 10 minutes) gives the `uuid` and `pointId` for `POST /api/open/scene/v3/robot/call/task`.
 
-Cancelling uses `DELETE /api/open/scene/v1/robot/call/task?taskNo=`. Like all Keenon API calls, these only work from a whitelisted IP. Keenon also needs the robot deployed, idle, and with remote call turned on in its app. The code is in `server/vendors/keenon/tasks.ts` and `src/vendors/keenon/SendTaskDialog.tsx`.
+Cancelling uses `DELETE /api/open/scene/v1/robot/call/task?taskNo=`, and the task shows **cancelled** at once, because Keenon doesn't always send a callback for it.
+
+Keenon can also stop sending updates before a task ends, for example for a point on another floor before Keenon's lift setup is done. Such a task shows "No update for N min". **Refresh** on the Robots page, or opening Send task, asks Keenon for the status of open tasks (`GET /api/open/scene/v1/robot/call/task?taskNo=`). A task Keenon no longer has (it keeps records for about an hour) is marked **ended**. Like all Keenon API calls, these only work from a whitelisted IP. Keenon also needs the robot deployed, idle, and with remote call turned on in its app. The code is in `server/vendors/keenon/tasks.ts` and `src/vendors/keenon/SendTaskDialog.tsx`.
 
 ```bash
 npm run keenon:mock      # fake Keenon Cloud on http://localhost:4010 (client "mock-client" / "mock-secret"; "Runner 1" is an S100 for Send task)

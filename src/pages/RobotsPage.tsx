@@ -25,12 +25,16 @@ const TASK_TONE: Record<string, BadgeTone> = {
   completed: 'green',
   failed: 'red',
   cancelled: 'slate',
+  ended: 'slate',
   in_progress: 'blue',
   calling: 'blue',
   queued: 'amber',
   waiting: 'amber',
   arrived: 'green',
 }
+
+/** Task states that need nothing more ("ended": the vendor stopped reporting the task). */
+const FINISHED_TASK_STATES = new Set(['completed', 'cancelled', 'failed', 'ended'])
 
 const COLLAPSED_KEY = 'robots.collapsedVendors'
 
@@ -304,6 +308,18 @@ function BatteryBar({ level, charging }: { level: number | null; charging: boole
   )
 }
 
+/** A remote call Keenon hasn't updated for a while may be stuck; Refresh asks Keenon about it. */
+function StaleTaskHint({ task }: { task: RobotTask }) {
+  if (task.type !== 'Remote call' || FINISHED_TASK_STATES.has(task.state)) return null
+  const minutes = Math.floor((Date.now() - Date.parse(task.updated_at)) / 60_000)
+  if (!(minutes >= 2)) return null
+  return (
+    <div className="text-xs text-amber-700">
+      No update for {minutes} min. Press Refresh to check with the vendor.
+    </div>
+  )
+}
+
 function TaskSummary({ task }: { task: RobotTask | null }) {
   if (!task) return <span className="text-slate-400">—</span>
   return (
@@ -313,6 +329,7 @@ function TaskSummary({ task }: { task: RobotTask | null }) {
         {task.type && <span className="text-xs text-slate-600">{task.type}</span>}
       </div>
       {task.error_message && <div className="text-xs text-red-700">{task.error_message}</div>}
+      <StaleTaskHint task={task} />
       <div className="text-xs text-slate-400" title={formatDateTime(task.updated_at)}>
         {task.task_no && <span className="font-mono">{task.task_no}</span>} · {timeAgo(task.updated_at)}
       </div>

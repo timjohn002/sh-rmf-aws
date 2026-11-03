@@ -175,3 +175,6 @@ export interface KeenonTaskSent {
   task_no: string
   queue_position: number | null
 }
+
+/** Task states after which a remote call needs nothing more ("ended": Keenon stopped reporting it). */
+export const FINISHED_TASK_STATES: ReadonlySet<string> = new Set(['completed', 'cancelled', 'failed', 'ended'])

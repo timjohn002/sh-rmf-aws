@@ -1,5 +1,6 @@
 import { refreshWaitSeconds } from '../../src/lib/robotRefresh'
 import type { Robot, RobotVendorInfo, RobotsResponse } from '../../src/types/api'
+import { logJson } from '../app'
 import { HttpError, handler, json, methodNotAllowed, requireUser } from '../lib/http'
 import { db } from '../lib/supabaseAdmin'
 import { VendorApiError } from '../vendors/errors'
@@ -88,6 +89,17 @@ async function refreshVendor(vendorId: string): Promise<Response> {
     throw err
   }
   await persistRobots(adapter.id, robots, { last_refreshed_at: new Date().toISOString() })
+  // Unfinished tasks are checked too; a problem there shouldn't fail the refresh itself.
+  if (adapter.refreshTasks) {
+    try {
+      await adapter.refreshTasks(contextFor(config))
+    } catch (err) {
+      logJson('error', 'task status refresh failed', {
+        vendor: adapter.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
   return json({ robots: robots.length })
 }
 
