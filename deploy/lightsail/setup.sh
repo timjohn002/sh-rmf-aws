@@ -64,9 +64,13 @@ main() {
     bash "$here/build-image.sh" "$SRC"
   fi
 
-  if grep -q 'CHANGE-ME' "$ENV_FILE"; then
+  # Settings still holding the placeholder (comment lines don't count).
+  local unset_keys
+  unset_keys="$(grep -E '^[[:space:]]*[A-Z_]+=.*CHANGE-ME' "$ENV_FILE" | cut -d= -f1 | paste -sd' ' - || true)"
+  if [ -n "$unset_keys" ]; then
     echo
-    echo "Almost done. Fill in the settings, then run this script again:"
+    echo "Almost done. Still to fill in: $unset_keys"
+    echo "Fill in the settings, then run this script again:"
     echo "  sudo nano $ENV_FILE"
     echo "  sudo bash $here/setup.sh $host"
     exit 0
