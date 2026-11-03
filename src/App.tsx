@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { RequireAdmin, RequireAuth } from './auth/RequireAuth'
 import { Layout } from './components/Layout'
+import { ElevatorsPage } from './pages/ElevatorsPage'
 import { LoginPage } from './pages/LoginPage'
 import { MapPage } from './pages/MapPage'
 import { RobotsPage } from './pages/RobotsPage'
@@ -62,6 +63,14 @@ export default function App() {
           element={
             <RequireAdmin>
               <VendorConfigPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="elevators"
+          element={
+            <RequireAdmin>
+              <ElevatorsPage />
             </RequireAdmin>
           }
         />

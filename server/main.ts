@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { serve } from '@hono/node-server'
 import { applyForwardedHeaders, createApp, logJson } from './app'
 import { db } from './lib/supabaseAdmin'
+import { syncLiftMind } from './elevators/store'
 import { ROUTES } from './routes'
 import { VENDORS } from './vendors/index'
 import { getConfigCached } from './vendors/store'
@@ -22,6 +23,8 @@ const app = createApp({ routes: ROUTES, staticDir, ready })
 
 // Load vendor configs now, so even the first callback is answered without waiting on the database.
 for (const vendor of VENDORS) getConfigCached(vendor.id).catch(() => {})
+// Connect to LiftMind (elevators) if it's set up; problems show on the Elevators page.
+void syncLiftMind()
 
 const server = serve(
   { fetch: (req) => app.fetch(trustProxy ? applyForwardedHeaders(req) : req), port },

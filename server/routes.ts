@@ -1,5 +1,6 @@
 import type { Route } from './app'
 import auth from './api/auth'
+import elevators from './api/elevators'
 import floors from './api/floors'
 import keenonMaps from './api/keenon-maps'
 import map from './api/map'
@@ -14,6 +15,7 @@ export const ROUTES: Route[] = [
   { paths: ['/api/users', '/api/users/:id', '/api/users/:id/password'], handler: users },
   { paths: ['/api/floors', '/api/floors/:id', '/api/floors/:id/plan-upload-url'], handler: floors },
   { paths: ['/api/map/robots'], handler: map },
+  { paths: ['/api/elevators', '/api/elevators/:id', '/api/elevators/:id/:action'], handler: elevators },
   { paths: ['/api/robots', '/api/robots/vendors/:vendor/refresh'], handler: robots },
   {
     // `/keenon/webhook`: the address Keenon's portal currently calls (no /api/vendors prefix, no token).

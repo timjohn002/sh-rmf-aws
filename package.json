@@ -16,6 +16,7 @@
     "create-user": "tsx --env-file=.env.local scripts/create-user.ts",
     "keenon:mock": "tsx scripts/keenon-mock.ts",
     "keenon:callbacks": "tsx scripts/keenon-send-callbacks.ts",
+    "liftmind:mock": "tsx scripts/liftmind-mock.ts",
     "tunnel": "tsx --env-file=.env.local scripts/tunnel.ts",
     "tunnel:dev": "tsx --env-file=.env.local scripts/tunnel.ts --port 8080"
   },
@@ -27,6 +28,7 @@
     "hono": "^4.13.14",
     "jose": "^6.2.12",
     "leaflet": "^1.9.4",
+    "mqtt": "^5.16.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-leaflet": "^5.0.0",
@@ -40,6 +42,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "aedes": "^1.2.0",
     "concurrently": "^10.0.6",
     "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",

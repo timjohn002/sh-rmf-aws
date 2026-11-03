@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import auth from './api/auth'
+import elevators from './api/elevators'
 import floors from './api/floors'
 import keenonMaps from './api/keenon-maps'
 import map from './api/map'
@@ -33,6 +34,9 @@ describe('route table', () => {
     ['PATCH', '/api/floors/f1', floors, { id: 'f1' }],
     ['POST', '/api/floors/f1/plan-upload-url', floors, { id: 'f1' }],
     ['GET', '/api/map/robots', map, {}],
+    ['GET', '/api/elevators', elevators, {}],
+    ['PUT', '/api/elevators/connection', elevators, { id: 'connection' }],
+    ['POST', '/api/elevators/e1/test-ride', elevators, { id: 'e1', action: 'test-ride' }],
     ['GET', '/api/robots', robots, {}],
     ['POST', '/api/robots/vendors/keenon/refresh', robots, { vendor: 'keenon' }],
     ['POST', '/api/vendors/keenon/webhook', vendorWebhook, { vendor: 'keenon' }],

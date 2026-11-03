@@ -10,9 +10,10 @@ Web app for managing robots, doors and elevators across building floors.
 - **Setup** (`/setup`): add floors, upload floor plans, and calibrate scale and origin.
 - **Robots** (`/robots`): live status of every vendor robot (online, battery, work state, current task).
 - **Vendors** (`/vendors`, admins only): configure robot vendor integrations. **Keenon** is supported, including its robot maps: discover each robot's floors, match them to app floors, align positions and calibrate to the floor plans.
+- **Elevators** (`/elevators`, admins only): connect to LiftMind (Owlsome Tech) over MQTT, set up the lifts each floor has, check a lift's queue and try a test ride.
 - **Users** (`/users`, admins only): add and delete accounts, and reset passwords.
 
-Door and elevator integration, and robot commands, come later.
+Door integration, robot commands and robots riding lifts on their own come later.
 
 ## Architecture
 
@@ -44,6 +45,7 @@ Node server in a container (server/)  ── service-role key ──▶  Supabas
    | `0004_keenon_floor_calibration.sql` | Keenon map → floor plan calibration |
    | `0005_keenon_position_alignment.sql` | Keenon reported position → map alignment |
    | `0006_vendor_event_details.sql` | Callback log: the URL that received each callback and our reply |
+   | `0007_elevators.sql` | LiftMind connection, lifts, the floors they serve and the robots allowed to use them |
 
    The files are safe to run again, so re-running one by mistake does no harm.
 
@@ -237,6 +239,36 @@ podman run -d --name starhub-rmf --restart unless-stopped --log-driver k8s-file 
 
 **While writing code**, dev mode avoids the rebuilds: run `npm run dev` (pages on http://localhost:5173, API on :8080, both reload on changes) and `npm run tunnel:dev` (tunnel → :8080) instead. Both modes use the same database, so settings like **Enabled** are shared.
 
+## Elevators (LiftMind)
+Lifts are controlled through Owlsome Tech's **LiftMind D Mode API**: MQTT over TLS, with a CA certificate from Owlsome Tech. The server keeps one MQTT connection open; its client ID is the prefix from Owlsome Tech plus a unique ending, so your laptop and the server can be connected at the same time.
+
+| Piece | Where |
+|---|---|
+| Messages, topics, title aliases (`ELEVATOR_REQUEST_RESPONSE` → `ELEVATOR_RESPONSE`, …) | `server/elevators/liftmind/messages.ts` |
+| MQTT connection, message log, test ride | `server/elevators/liftmind/connection.ts`, `testRide.ts` |
+| Settings and lifts (database) | `server/elevators/store.ts`, `0007_elevators.sql` |
+| API | `server/api/elevators.ts` (admins only) |
+| Page | `src/pages/ElevatorsPage.tsx`, `src/components/elevators/` |
+
+### Setting up
+1. Run `0007_elevators.sql` in Supabase.
+2. **Elevators → LiftMind connection:** enter the MQTT server and port, the client ID prefix, and choose the **CA certificate** file. Then **Import setting.json** (from Owlsome Tech). It fills in the manufacturer ID, username and password and creates a lift for every elevator in it, with its robots. Click **Save & connect**: the badges should show **Connected** and **LiftMind service: online**.
+3. For each lift, click it (or **Edit**) and tick the **floors it serves**, with **LiftMind's name** for each floor (`1F`, `B1F`, `G`…, exactly as Owlsome Tech set up the site). A floor can have several lifts.
+4. **Check** asks LiftMind for the lift's queue: a quick test that the connection and the elevator UUID are right.
+
+The password is write-only: it's stored in the database and never sent back to the browser. The Lightsail server needs outbound access to the MQTT port (allowed by default).
+
+### Test ride
+**Test ride** on a lift calls it from one floor to another while **you play the robot**: after the lift arrives, press **Robot entered**, and at the destination **Robot exited**. You can also report a failed entry or exit (then choose a floor to recover to) or cancel. Every message to and from LiftMind appears under **MQTT messages**.
+
+**A test ride moves a real lift** unless the connection points at Owlsome Tech's Beta / virtual elevator, or at the local fake below.
+
+### Without a real lift
+```bash
+npm run liftmind:mock   # fake LiftMind (virtual elevator) on mqtt://localhost:1883, no TLS, no login
+```
+On the Elevators page set the server to `localhost`, port `1883`, **Use TLS** off, and any manufacturer ID. The fake lift takes 3 s per trip (`LIFTMIND_MOCK_TRAVEL_MS`). It runs on your machine, so use it with `npm run dev`, not the container.
+
 ## Scripts
 | Command | What it does |
 |---|---|
@@ -247,6 +279,7 @@ podman run -d --name starhub-rmf --restart unless-stopped --log-driver k8s-file 
 | `npm test` | Unit tests (server routing and static serving, coordinates, passwords, sessions, Keenon client and callbacks, map calibration and alignment, Map placement) |
 | `npm run create-user` | Create or reset an account from the command line |
 | `npm run keenon:mock` | Fake Keenon Cloud for local testing |
+| `npm run liftmind:mock` | Fake LiftMind (virtual elevator) for local testing |
 | `npm run keenon:callbacks` | Send example Keenon callbacks to a webhook URL |
 | `npm run tunnel` | ngrok tunnel to the Podman container (:8090), for real vendor callbacks |
 | `npm run tunnel:dev` | ngrok tunnel to the `npm run dev` API server (:8080) |
