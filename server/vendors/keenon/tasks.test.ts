@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { RobotTask } from '../../../src/types/api'
 import { canTakeTasks } from '../../../src/vendors/keenon/shared'
 import type { KeenonRawPoint, KeenonTarget } from './api'
-import { cachedTargets, callTaskBody, clearTargetCache, taskTargets } from './tasks'
+import { KeenonError } from './client'
+import {
+  NO_RECORD_MESSAGE,
+  cachedTargets,
+  callTaskBody,
+  clearTargetCache,
+  isOpenRemoteCall,
+  reconcileTask,
+  taskTargets,
+} from './tasks'
 
 const target = (id: string, name: string, area: string | null = null): KeenonTarget => ({
   id,
@@ -68,5 +78,59 @@ describe('canTakeTasks', () => {
     [null, false],
   ])('%s → %s', (model, expected) => {
     expect(canTakeTasks(model)).toBe(expected)
+  })
+})
+
+describe('reconcileTask', () => {
+  const NOW = new Date('2026-11-03T08:30:00Z')
+  const open: RobotTask = {
+    source: 'CreateTask',
+    task_no: 'T-1',
+    state: 'in_progress',
+    type: 'Remote call',
+    error_code: null,
+    error_message: null,
+    detail: { point_name: 'Room 201' },
+    updated_at: '2026-11-03T07:45:23Z',
+  }
+
+  it('takes Keenon’s answer when the task finished', async () => {
+    const task = await reconcileTask(open, 'SN-1', async () => ({ taskNo: 'T-1', taskStatus: 4, errorCode: 0, taskData: { robotId: 'SN-1' } }), NOW)
+    expect(task).toMatchObject({ state: 'completed', task_no: 'T-1', type: 'Remote call', updated_at: NOW.toISOString() })
+  })
+
+  it('keeps a still-running task, with a fresh time', async () => {
+    const task = await reconcileTask(open, 'SN-1', async () => ({ taskNo: 'T-1', taskStatus: 3 }), NOW)
+    expect(task).toMatchObject({ state: 'in_progress', updated_at: NOW.toISOString() })
+  })
+
+  it('ends a task Keenon no longer knows (no data, or a parameter error)', async () => {
+    expect(await reconcileTask(open, 'SN-1', async () => null, NOW)).toMatchObject({ state: 'ended', error_message: NO_RECORD_MESSAGE })
+    const unknown = async () => {
+      throw new KeenonError(610601, 'Keenon rejected the request parameters.')
+    }
+    expect(await reconcileTask(open, 'SN-1', unknown, NOW)).toMatchObject({ state: 'ended' })
+  })
+
+  it('passes other Keenon errors on, changing nothing', async () => {
+    const blocked = async () => {
+      throw new KeenonError(617000, 'IP not whitelisted')
+    }
+    await expect(reconcileTask(open, 'SN-1', blocked, NOW)).rejects.toThrow(/whitelisted/)
+  })
+
+  it('leaves finished tasks and non-remote tasks alone', async () => {
+    const query = vi.fn(async () => ({ taskStatus: 4 }))
+    expect(await reconcileTask({ ...open, state: 'completed' }, 'SN-1', query)).toBeNull()
+    expect(await reconcileTask({ ...open, state: 'ended' }, 'SN-1', query)).toBeNull()
+    expect(await reconcileTask({ ...open, type: 'Hotel delivery' }, 'SN-1', query)).toBeNull()
+    expect(await reconcileTask(null, 'SN-1', query)).toBeNull()
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('isOpenRemoteCall', () => {
+    expect(isOpenRemoteCall(open)).toBe(true)
+    expect(isOpenRemoteCall({ ...open, state: 'cancelled' })).toBe(false)
+    expect(isOpenRemoteCall({ ...open, task_no: null })).toBe(false)
   })
 })

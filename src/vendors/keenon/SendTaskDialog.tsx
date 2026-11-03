@@ -3,10 +3,8 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, ErrorBox, Modal, SelectField, Spinner, errorMessage } from '../../components/ui'
 import type { Robot } from '../../types/api'
-import { canTakeTasks, type KeenonTaskSent } from './shared'
+import { FINISHED_TASK_STATES, canTakeTasks, type KeenonTaskSent } from './shared'
 import { useCancelTask, useRefreshTaskPoints, useSendTask, useTaskFloors, useTaskPoints } from './useKeenonMaps'
-
-const FINISHED = new Set(['completed', 'cancelled', 'failed'])
 
 /** Send task / Cancel task buttons for a Keenon robot's row on the Robots page (S100 only, admins). */
 export function KeenonRobotActions({ robot }: { robot: Robot }) {
@@ -15,7 +13,7 @@ export function KeenonRobotActions({ robot }: { robot: Robot }) {
   if (!canTakeTasks(robot.model)) return null
 
   const task = robot.current_task
-  const running = !!task?.task_no && task.type === 'Remote call' && !FINISHED.has(task.state)
+  const running = !!task?.task_no && task.type === 'Remote call' && !FINISHED_TASK_STATES.has(task.state)
   // Whether Keenon accepts a call is checked live when the dialog opens (the stored flag can be stale).
   const why = robot.online === false ? 'The robot is offline' : undefined
 
@@ -73,6 +71,7 @@ export function SendTaskDialog({ robot, onClose }: { robot: Robot; onClose: () =
     return q ? all.filter((p) => `${p.name} ${p.area ?? ''}`.toLowerCase().includes(q)) : all
   }, [points.data, search])
   const point = points.data?.points.find((p) => p.uuid === selected) ?? null
+  const robotFloor = floors.data?.floors.find((f) => f.current) ?? null
 
   function submit(e: FormEvent) {
     e.preventDefault()
@@ -140,6 +139,13 @@ export function SendTaskDialog({ robot, onClose }: { robot: Robot; onClose: () =
                 {refresh.isPending ? 'Reloading…' : 'Reload points'}
               </Button>
             </div>
+
+            {robotFloor && floor !== null && floor !== robotFloor.floor && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                The robot is on floor {robotFloor.floor}. Tasks on another floor need Keenon's lift setup and won't complete
+                yet.
+              </p>
+            )}
 
             <div>
               <p className="mb-1 text-sm font-medium text-slate-700">Point</p>

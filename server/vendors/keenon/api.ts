@@ -182,3 +182,11 @@ export async function callTask(
 export async function cancelCallTask(client: KeenonClient, taskNo: string): Promise<void> {
   await client.delete('/api/open/scene/v1/robot/call/task', { taskNo })
 }
+
+/** `GET /scene/v1/robot/call/task?taskNo=`: a remote call task's status (Keenon keeps records ~1 h). */
+export async function getCallTask(client: KeenonClient, taskNo: string): Promise<Record<string, unknown> | null> {
+  const data = await client.get<unknown>('/api/open/scene/v1/robot/call/task', { taskNo })
+  const list = asList<Record<string, unknown>>(data)
+  if (list.length) return list[0]
+  return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : null
+}

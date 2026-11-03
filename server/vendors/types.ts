@@ -129,6 +129,8 @@ export interface VendorAdapter {
   fetchSyncData(ctx: VendorContext): Promise<SyncData>
   /** Current status of all of this vendor's robots in scope (Robots page "Refresh"). */
   refreshRobots(ctx: VendorContext): Promise<SyncedRobot[]>
+  /** Optional, after a Refresh: bring robots' unfinished tasks up to date (e.g. ask the vendor). */
+  refreshTasks?(ctx: VendorContext): Promise<void>
 
   verifyWebhook(config: VendorConfigRow, rawBody: string, headers: Headers): SignatureCheck
   requireSignature(config: VendorConfigRow): boolean
