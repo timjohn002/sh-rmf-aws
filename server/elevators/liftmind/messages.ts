@@ -15,9 +15,16 @@ export function parseRobotTopic(topic: string): { manufacturerId: string; robotI
   return m ? { manufacturerId: m[1], robotId: m[2], kind: m[3] as TopicKind } : null
 }
 
-/** New titles LiftMind has announced, mapped to the current official ones. */
-const FUTURE_TITLES: Record<string, string> = {
+/**
+ * Other names for the titles this code works with. The D Mode document announces the new
+ * `…_MISSION` / `ELEVATOR_REQUEST_RESPONSE` names; the live service already sends some
+ * `…_REQUEST_RESPONSE` titles the document doesn't mention (CHECK_REQUEST_RESPONSE, seen live).
+ * RECOVERY_REQUEST_RESPONSE is not here: that is its documented name.
+ */
+const TITLE_ALIASES: Record<string, string> = {
   ELEVATOR_REQUEST_RESPONSE: 'ELEVATOR_RESPONSE',
+  CHECK_REQUEST_RESPONSE: 'CHECK_RESPONSE',
+  CANCEL_REQUEST_RESPONSE: 'CANCEL_RESPONSE',
   CANCEL_MISSION: 'CANCEL_REQUEST',
   CANCEL_MISSION_RESPONSE: 'CANCEL_RESPONSE',
   ABORT_MISSION: 'ABORT_REQUEST',
@@ -25,7 +32,7 @@ const FUTURE_TITLES: Record<string, string> = {
 
 export function normalizeTitle(title: unknown): string {
   const t = typeof title === 'string' ? title.trim().toUpperCase() : ''
-  return FUTURE_TITLES[t] ?? t
+  return TITLE_ALIASES[t] ?? t
 }
 
 /** A message received from LiftMind, with its title normalized. */

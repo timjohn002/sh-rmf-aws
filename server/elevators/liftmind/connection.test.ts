@@ -57,7 +57,7 @@ describe('LiftMind connection', () => {
     expect(link.snapshot().state).toBe('disabled')
   })
 
-  it('answers CHECK_REQUEST through the matching uuid', async () => {
+  it('matches the CHECK reply by uuid, under its live title CHECK_REQUEST_RESPONSE', async () => {
     const link = await connected()
     const reply = await link.request('rb-1', checkRequest('check-1', { elevatorUuid: 'lc-1' }), ['CHECK_RESPONSE'])
     expect(reply).toMatchObject({ title: 'CHECK_RESPONSE', is_success: true, queue_length: { 'lc-1': 0 } })

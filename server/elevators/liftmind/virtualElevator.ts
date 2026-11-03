@@ -127,7 +127,8 @@ export function attachVirtualElevator(broker: Aedes, opts: VirtualElevatorOption
         case 'CHECK_REQUEST': {
           const elevator = String(body.elevator_uuid ?? body.lobby_uuid ?? 'elev_01')
           const busy = [...missions.values()].filter((m) => m.elevator === elevator).length
-          reply({ uuid, title: 'CHECK_RESPONSE', is_success: true, queue_length: { [elevator]: busy } })
+          // The live service answers with this title, not the documented CHECK_RESPONSE.
+          reply({ uuid, title: 'CHECK_REQUEST_RESPONSE', is_success: true, queue_length: { [elevator]: busy } })
           return
         }
 

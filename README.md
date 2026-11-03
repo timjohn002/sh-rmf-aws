@@ -244,7 +244,7 @@ Lifts are controlled through Owlsome Tech's **LiftMind D Mode API**: MQTT over T
 
 | Piece | Where |
 |---|---|
-| Messages, topics, title aliases (`ELEVATOR_REQUEST_RESPONSE` → `ELEVATOR_RESPONSE`, …) | `server/elevators/liftmind/messages.ts` |
+| Messages, topics, title aliases (`ELEVATOR_REQUEST_RESPONSE` → `ELEVATOR_RESPONSE`; `CHECK_REQUEST_RESPONSE` → `CHECK_RESPONSE`, which the live service sends although the document says `CHECK_RESPONSE`; …) | `server/elevators/liftmind/messages.ts` |
 | MQTT connection, message log, test ride | `server/elevators/liftmind/connection.ts`, `testRide.ts` |
 | Settings and lifts (database) | `server/elevators/store.ts`, `0007_elevators.sql` |
 | API | `server/api/elevators.ts` (admins only) |
