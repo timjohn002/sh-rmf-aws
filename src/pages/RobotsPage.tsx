@@ -140,6 +140,7 @@ function VendorSection({
   const [blockedUntil, setBlockedUntil] = useState(0)
   const online = robots.filter((r) => r.online === true).length
   const RobotDetail = VENDOR_UI[vendor.id]?.RobotDetail
+  const RobotActions = isAdmin ? VENDOR_UI[vendor.id]?.RobotActions : undefined
   const cooldownSeconds = vendor.capabilities.refresh_cooldown_ms / 1000
   const waitSeconds = Math.max(
     refreshWaitSeconds(vendor.last_refreshed_at, vendor.capabilities.refresh_cooldown_ms, now),
@@ -226,7 +227,7 @@ function VendorSection({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {robots.map((robot) => (
-                  <RobotRow key={robot.id} robot={robot} Detail={RobotDetail} />
+                  <RobotRow key={robot.id} robot={robot} Detail={RobotDetail} Actions={RobotActions} />
                 ))}
               </tbody>
             </table>
@@ -237,7 +238,15 @@ function VendorSection({
   )
 }
 
-function RobotRow({ robot, Detail }: { robot: Robot; Detail?: ComponentType<{ robot: Robot }> }) {
+function RobotRow({
+  robot,
+  Detail,
+  Actions,
+}: {
+  robot: Robot
+  Detail?: ComponentType<{ robot: Robot }>
+  Actions?: ComponentType<{ robot: Robot }>
+}) {
   const state = WORK_STATE[robot.work_state] ?? WORK_STATE.unknown
   return (
     <tr className="align-top">
@@ -245,6 +254,7 @@ function RobotRow({ robot, Detail }: { robot: Robot; Detail?: ComponentType<{ ro
         <div className="font-medium">{robot.name ?? robot.external_id}</div>
         <div className="font-mono text-xs text-slate-500">{robot.external_id}</div>
         {robot.model && <div className="text-xs text-slate-500">{robot.model}</div>}
+        {Actions && <Actions robot={robot} />}
       </td>
       <td className="px-4 py-3 text-slate-600">{robot.store_name ?? robot.store_external_id ?? '—'}</td>
       <td className="px-4 py-3">

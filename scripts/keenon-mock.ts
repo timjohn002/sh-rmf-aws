@@ -4,6 +4,7 @@
 //
 // In Vendors → Keenon choose Region "Custom URL" = http://localhost:4010,
 // Client ID "mock-client", Client secret "mock-secret".
+// "Runner 1" is an S100 with two floors of points, for trying Send task (Robots page).
 
 import { createServer } from 'node:http'
 
@@ -21,6 +22,7 @@ const robots: Record<string, object[]> = {
   S00000001: [
     { robotId: 'AA:BB:CC:00:00:01', robotName: 'Butler 1', onlineStatus: 1, power: 82, robotModel: 'W3', appVersion: 'v1.15.0', onlineType: 2 },
     { robotId: '2C:C3:E6:E8:33:78', robotName: 'Cleaner 1', onlineStatus: 1, power: 64, robotModel: 'C40', appVersion: 'v3.6.0', onlineType: 4 },
+    { robotId: 'AA:BB:CC:00:01:00', robotName: 'Runner 1', onlineStatus: 1, power: 90, robotModel: 'S100', appVersion: 'v1.10.0', onlineType: 2 },
   ],
   S00000002: [
     { robotId: 'AA:BB:CC:00:00:02', robotName: 'Server 1', onlineStatus: 0, power: 12, robotModel: 'T8', appVersion: 'v1.8.0', onlineType: 2 },
@@ -28,6 +30,27 @@ const robots: Record<string, object[]> = {
 }
 
 const ok = (data: unknown) => ({ code: 610000, msg: 'Request successful', data })
+
+// Scene dhads6: map points per floor (map/position, with type) and the target list (uuid/pointId,
+// no type). Both share the point id. Only "normal" points can be sent to.
+const mapPoints: Record<number, { id: number; name: string; type: string }[]> = {
+  1: [
+    { id: 101, name: 'Lobby', type: 'normal' },
+    { id: 102, name: 'Reception', type: 'normal' },
+    { id: 103, name: 'Charging pile', type: 'charge' },
+  ],
+  2: [
+    { id: 201, name: 'Room 201', type: 'normal' },
+    { id: 202, name: 'Room 202', type: 'normal' },
+    { id: 203, name: 'Lift lobby L2', type: 'elevator' },
+    { id: 204, name: 'Pantry', type: 'normal' }, // missing from the target list on purpose
+  ],
+}
+const targets = Object.values(mapPoints)
+  .flat()
+  .filter((p) => p.id !== 204)
+  .map((p) => ({ id: p.id, pointName: p.name, area: p.id < 200 ? 'Ground' : 'Level 2', uuid: `uuid-${p.id}`, pointId: String(p.id) }))
+const tasks = new Map<string, { robotId: string; uuid: string }>()
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`)
@@ -91,6 +114,37 @@ const server = createServer(async (req, res) => {
       )
     case '/api/open/custom/robot/battery/level':
       return send(ok({ batteryLevel: 63 }))
+    case '/api/open/custom/robot/map/position': {
+      const floor = Number(url.searchParams.get('floorInfo'))
+      const points = url.searchParams.get('sceneCode') === 'dhads6' ? (mapPoints[floor] ?? []) : []
+      return send(ok({ targetList: points.map((p) => ({ ...p, targetId: p.id, floor, floorInfo: `L${floor}`, mapMd5: 'mock' })) }))
+    }
+    case '/api/open/custom/robot/location':
+      return send(ok({ coordinate: '1.5,2.5,0', floor: 2, lastReportTimestamp: Date.now() }))
+    case '/api/open/scene/v1/target/list':
+      return send(ok({ list: url.searchParams.get('sceneCode') === 'dhads6' ? targets : [] }))
+    case '/api/open/scene/v3/robot/call/task': {
+      if (req.method === 'POST') {
+        const call = JSON.parse(body || '{}') as { uuid?: string; pointId?: string; robotId?: string; storeId?: string }
+        if (!targets.some((t) => t.uuid === call.uuid && t.pointId === call.pointId)) {
+          return send({ code: 610601, msg: 'Unknown point' })
+        }
+        const taskNo = Math.random().toString(16).slice(2, 18)
+        tasks.set(taskNo, { robotId: call.robotId ?? '', uuid: call.uuid ?? '' })
+        console.log(`  → task ${taskNo}: ${call.robotId} to ${call.uuid}`)
+        return send(ok({ taskNo, waitQueuing: 1 }))
+      }
+      return send({ code: 610601, msg: 'Use POST' }, 405)
+    }
+    case '/api/open/scene/v1/robot/call/task': {
+      if (req.method === 'DELETE') {
+        const taskNo = url.searchParams.get('taskNo') ?? ''
+        if (!tasks.delete(taskNo)) return send({ code: 610601, msg: 'Task not found' })
+        console.log(`  → task ${taskNo} cancelled`)
+        return send({ code: 610000, msg: 'Request successful' })
+      }
+      return send({ code: 610601, msg: 'Use DELETE' }, 405)
+    }
     default:
       return send({ code: 610601, msg: `Mock has no ${url.pathname}` }, 404)
   }

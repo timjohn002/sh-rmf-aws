@@ -203,9 +203,17 @@ The alignment can change when a robot restarts or relocalizes. If a robot looks 
 
 Where Keenon can't be reached (IP not whitelisted), the Map shows the last known positions, faded after 2 minutes.
 
-### Testing without real robots
+### Sending a robot to a point (S100)
+Admins see **Send task** on the Robots page for Keenon robots whose model contains **S100**. Pick a floor (the robot's discovered floors in its current scene) and a point, then **Send**. The robot's **Current task** shows *Remote call: queued* straight away and then follows Keenon's `CreateTask` callbacks. **Cancel task** appears while it's running.
+
+Only points of type `normal` can be sent to. Keenon splits what a call needs over two endpoints, and the app joins them by point id:
+- `/api/open/custom/robot/map/position` (per floor) gives each point's `type`;
+- `/api/open/scene/v1/target/list` (per scene, cached 10 minutes) gives the `uuid` and `pointId` for `POST /api/open/scene/v3/robot/call/task`.
+
+Cancelling uses `DELETE /api/open/scene/v1/robot/call/task?taskNo=`. Like all Keenon API calls, these only work from a whitelisted IP. Keenon also needs the robot deployed, idle, and with remote call turned on in its app. The code is in `server/vendors/keenon/tasks.ts` and `src/vendors/keenon/SendTaskDialog.tsx`.
+
 ```bash
-npm run keenon:mock      # fake Keenon Cloud on http://localhost:4010 (client "mock-client" / "mock-secret")
+npm run keenon:mock      # fake Keenon Cloud on http://localhost:4010 (client "mock-client" / "mock-secret"; "Runner 1" is an S100 for Send task)
 npm run keenon:callbacks -- --url <callback URL> [--secret <client secret>]   # replays the API doc's callback examples
 ```
 

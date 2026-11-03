@@ -38,6 +38,14 @@ describe('KeenonClient', () => {
     expect(saveToken).toHaveBeenCalledOnce()
   })
 
+  it('sends DELETE with query parameters and no body', async () => {
+    const { fetchImpl, calls } = mockFetch([TOKEN, { body: { code: 610000, msg: 'success' } }])
+    await client(fetchImpl).delete('/api/open/scene/v1/robot/call/task', { taskNo: 't 1' })
+    expect(calls[1].init.method).toBe('DELETE')
+    expect(calls[1].url).toBe('https://keenon.test/api/open/scene/v1/robot/call/task?taskNo=t+1')
+    expect(calls[1].init.body).toBeUndefined()
+  })
+
   it('uses a cached token until shortly before it expires', async () => {
     let now = 0
     const { fetchImpl, calls } = mockFetch([{ body: { code: 610000, data: 'x' } }, TOKEN, { body: { code: 610000, data: 'y' } }])

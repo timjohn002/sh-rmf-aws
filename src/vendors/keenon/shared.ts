@@ -128,3 +128,46 @@ export interface KeenonScene {
   code: string
   name: string
 }
+
+// ---------------------------------------------------------------------------
+// Remote call tasks ("Send task": send a robot to a point)
+// ---------------------------------------------------------------------------
+
+/** Robots that take remote call tasks from the app. Only the S100 for now. */
+export function canTakeTasks(model: string | null | undefined): boolean {
+  return !!model && model.toUpperCase().includes('S100')
+}
+
+/** A point a robot can be sent to: a "normal" map point with the target-list ids a call needs. */
+export interface KeenonTaskPoint {
+  uuid: string
+  point_id: string
+  name: string
+  area: string | null
+}
+
+export interface KeenonTaskPoints {
+  scene_code: string
+  floor: number
+  points: KeenonTaskPoint[]
+  /** "normal" points on this floor with no entry in the scene's target list (can't be sent to). */
+  unmatched: number
+}
+
+/** A floor the robot can be sent to, from its discovered floors in the current scene. */
+export interface KeenonTaskFloor {
+  floor: number
+  label: string | null
+  /** The robot was last seen on this floor. */
+  current: boolean
+}
+
+export interface KeenonTaskFloors {
+  scene_code: string | null
+  floors: KeenonTaskFloor[]
+}
+
+export interface KeenonTaskSent {
+  task_no: string
+  queue_position: number | null
+}
