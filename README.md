@@ -267,7 +267,7 @@ The password is write-only: it's stored in the database and never sent back to t
 ```bash
 npm run liftmind:mock   # fake LiftMind (virtual elevator) on mqtt://localhost:1883, no TLS, no login
 ```
-On the Elevators page set the server to `localhost`, port `1883`, **Use TLS** off, and any manufacturer ID. The fake lift takes 3 s per trip (`LIFTMIND_MOCK_TRAVEL_MS`). It runs on your machine, so use it with `npm run dev`, not the container.
+On the Elevators page set the server to `localhost`, port `1883`, **Use TLS** off, and any manufacturer ID. The fake lift takes 3 s per trip (`LIFTMIND_MOCK_TRAVEL_MS`). When the app runs in the Podman container, use the server name `host.containers.internal` instead of `localhost` (inside the container, `localhost` is the container itself).
 
 ## Scripts
 | Command | What it does |
