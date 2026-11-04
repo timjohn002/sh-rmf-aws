@@ -18,7 +18,8 @@ import {
   type PlanTransform,
 } from './calibration'
 import { alignedRobot, floorAlignment, type AlignedRobot } from './floorTransforms'
-import { keenonMapCalibration, mapPixelToMeters } from './mapGeometry'
+import { keenonMapCalibration, namedPointToMeters } from './mapGeometry'
+import { PointsFlipSwitch } from './PointsFlipSwitch'
 import { SNAP_MODE_LABEL, snapToNamedPoint, type SnapMode } from './snapping'
 import type { KeenonRobotFloor, KeenonRobotMapsDetail } from './shared'
 import { useClearCalibration, useKeenonRobotMaps, useLocateRobot, useSaveCalibration } from './useKeenonMaps'
@@ -133,7 +134,12 @@ function CalibrationEditor({
   const [opacity, setOpacity] = useState(0.5)
   const [saved, setSaved] = useState(false)
 
-  const keenonFrame = { map_height: floor.map_height!, origin_x_m: floor.origin_x_m!, origin_y_m: floor.origin_y_m! }
+  const keenonFrame = {
+    map_height: floor.map_height!,
+    origin_x_m: floor.origin_x_m!,
+    origin_y_m: floor.origin_y_m!,
+    points_flipped: floor.points_flipped,
+  }
   const keenonCal = useMemo(() => keenonMapCalibration(keenonFrame), [floor.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fit = useMemo(() => {
@@ -183,10 +189,10 @@ function CalibrationEditor({
   const namedPoints = useMemo(
     () =>
       floor.points.map((p) => {
-        const metres = mapPixelToMeters(keenonFrame, { x: p.x_px, y: p.y_px })
+        const metres = namedPointToMeters(keenonFrame, { x: p.x_px, y: p.y_px })
         return { name: p.name, metres, image: worldToPixel(metres, keenonCal) }
       }),
-    [floor.points, keenonCal], // eslint-disable-line react-hooks/exhaustive-deps
+    [floor.points, floor.points_flipped, keenonCal], // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   function onKeenonClick(imagePx: Point, info: PlanClickInfo) {
@@ -288,6 +294,8 @@ function CalibrationEditor({
         )}
       </div>
 
+      {floor.points.length > 0 && <PointsFlipSwitch robotId={robotId} floor={floor} />}
+
       <div className="grid gap-4 xl:grid-cols-2">
         <div>
           <p className="mb-1 text-sm font-medium text-slate-700">Keenon map (robot metres)</p>
@@ -303,7 +311,7 @@ function CalibrationEditor({
               {floor.points.map((p, i) => (
                 <CircleMarker
                   key={`np-${i}`}
-                  center={pixelToLatLng(worldToPixel(mapPixelToMeters(keenonFrame, { x: p.x_px, y: p.y_px }), keenonCal))}
+                  center={pixelToLatLng(worldToPixel(namedPointToMeters(keenonFrame, { x: p.x_px, y: p.y_px }), keenonCal))}
                   radius={4}
                   interactive={false}
                   pathOptions={{ color: '#1d4ed8', weight: 1.5, fillColor: '#60a5fa', fillOpacity: 0.9 }}
@@ -360,7 +368,7 @@ function CalibrationEditor({
                 floor.points.map((p, i) => (
                   <CircleMarker
                     key={`pp-${i}`}
-                    center={pixelToLatLng(robotToPlan(transform, mapPixelToMeters(keenonFrame, { x: p.x_px, y: p.y_px })))}
+                    center={pixelToLatLng(robotToPlan(transform, namedPointToMeters(keenonFrame, { x: p.x_px, y: p.y_px })))}
                     radius={3}
                     interactive={false}
                     pathOptions={{ color: '#1d4ed8', weight: 1, fillColor: '#60a5fa', fillOpacity: 0.8 }}

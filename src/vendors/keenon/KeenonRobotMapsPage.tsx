@@ -17,7 +17,8 @@ import { formatMeters, pixelToLatLng, worldToPixel, type Point } from '../../lib
 import { formatDateTime, timeAgo } from '../../lib/format'
 import type { Floor } from '../../types/api'
 import { alignedRobot, floorAlignment } from './floorTransforms'
-import { keenonMapCalibration, mapPixelToMeters } from './mapGeometry'
+import { keenonMapCalibration, namedPointToMeters } from './mapGeometry'
+import { PointsFlipSwitch } from './PointsFlipSwitch'
 import { KEENON_MAP_RESOLUTION, type KeenonRobotFloor, type KeenonRobotMapsDetail } from './shared'
 import {
   useDiscoverRobotMaps,
@@ -330,6 +331,12 @@ function FloorCard({
       </div>
 
       {floor.points.length > 0 && (
+        <div className="mt-4">
+          <PointsFlipSwitch robotId={detail.robot.robot_id} floor={floor} />
+        </div>
+      )}
+
+      {floor.points.length > 0 && (
         <details className="mt-4">
           <summary className="cursor-pointer text-sm text-slate-600">
             {floor.points.length} named point{floor.points.length === 1 ? '' : 's'}
@@ -374,7 +381,7 @@ function KeenonFloorMap({ floor, robot }: { floor: KeenonRobotFloor; robot: Poin
       </div>
     )
   }
-  const frame = { map_height, origin_x_m, origin_y_m }
+  const frame = { map_height, origin_x_m, origin_y_m, points_flipped: floor.points_flipped }
   const calibration = keenonMapCalibration(frame)
   const toLatLng = (metres: { x: number; y: number }) => pixelToLatLng(worldToPixel(metres, calibration))
 
@@ -390,7 +397,7 @@ function KeenonFloorMap({ floor, robot }: { floor: KeenonRobotFloor; robot: Poin
         {floor.points.map((p, i) => (
           <CircleMarker
             key={`${p.id ?? 'p'}-${i}`}
-            center={toLatLng(mapPixelToMeters(frame, { x: p.x_px, y: p.y_px }))}
+            center={toLatLng(namedPointToMeters(frame, { x: p.x_px, y: p.y_px }))}
             radius={4}
             pathOptions={{ color: '#1d4ed8', weight: 1.5, fillColor: '#60a5fa', fillOpacity: 0.9 }}
           >
@@ -447,7 +454,12 @@ function AppFloorPreview({ floor, previewKey }: { floor: Floor | null; previewKe
 function PointsTable({ floor }: { floor: KeenonRobotFloor }) {
   const frame =
     floor.map_height && floor.origin_x_m !== null && floor.origin_y_m !== null
-      ? { map_height: floor.map_height, origin_x_m: floor.origin_x_m, origin_y_m: floor.origin_y_m }
+      ? {
+          map_height: floor.map_height,
+          origin_x_m: floor.origin_x_m,
+          origin_y_m: floor.origin_y_m,
+          points_flipped: floor.points_flipped,
+        }
       : null
   return (
     <div className="mt-2 overflow-x-auto">
@@ -463,7 +475,7 @@ function PointsTable({ floor }: { floor: KeenonRobotFloor }) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {floor.points.map((p, i) => {
-            const m = frame ? mapPixelToMeters(frame, { x: p.x_px, y: p.y_px }) : null
+            const m = frame ? namedPointToMeters(frame, { x: p.x_px, y: p.y_px }) : null
             return (
               <tr key={`${p.id ?? 'p'}-${i}`}>
                 <td className="py-1 pr-3">{p.name}</td>

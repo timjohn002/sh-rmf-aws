@@ -68,6 +68,8 @@ export interface KeenonRobotFloor {
   origin_y_m: number | null
   is_dynamic: boolean | null
   points: KeenonMapPoint[]
+  /** This floor's named points have y measured from the top of the image (seen on the S100). */
+  points_flipped: boolean
   map_versions: string[]
   sources: string[]
   last_seen_at: string

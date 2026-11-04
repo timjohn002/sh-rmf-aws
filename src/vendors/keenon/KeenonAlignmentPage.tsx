@@ -18,7 +18,7 @@ import {
   type PositionAlignment,
 } from './alignment'
 import { floorAlignment } from './floorTransforms'
-import { keenonMapCalibration, mapPixelToMeters } from './mapGeometry'
+import { keenonMapCalibration, namedPointToMeters } from './mapGeometry'
 import type { KeenonRobotFloor, KeenonRobotMapsDetail } from './shared'
 import { useClearAlignment, useKeenonRobotMaps, useLocateRobot, useSaveAlignment } from './useKeenonMaps'
 
@@ -110,7 +110,12 @@ function AlignmentEditor({
   const [trail, setTrail] = useState<Point[]>([])
   const [saved, setSaved] = useState(false)
 
-  const keenonFrame = { map_height: floor.map_height!, origin_x_m: floor.origin_x_m!, origin_y_m: floor.origin_y_m! }
+  const keenonFrame = {
+    map_height: floor.map_height!,
+    origin_x_m: floor.origin_x_m!,
+    origin_y_m: floor.origin_y_m!,
+    points_flipped: floor.points_flipped,
+  }
   const keenonCal = useMemo(() => keenonMapCalibration(keenonFrame), [floor.id]) // eslint-disable-line react-hooks/exhaustive-deps
   const toLatLng = (p: Point) => pixelToLatLng(worldToPixel(p, keenonCal))
 
@@ -283,7 +288,7 @@ function AlignmentEditor({
               {floor.points.map((p, i) => (
                 <CircleMarker
                   key={`np-${i}`}
-                  center={pixelToLatLng(worldToPixel(mapPixelToMeters(keenonFrame, { x: p.x_px, y: p.y_px }), keenonCal))}
+                  center={pixelToLatLng(worldToPixel(namedPointToMeters(keenonFrame, { x: p.x_px, y: p.y_px }), keenonCal))}
                   radius={3}
                   interactive={false}
                   pathOptions={{ color: '#1d4ed8', weight: 1, fillColor: '#60a5fa', fillOpacity: 0.8 }}

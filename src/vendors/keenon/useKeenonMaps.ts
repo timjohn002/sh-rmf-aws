@@ -76,6 +76,13 @@ function useFloorMutation<V>(robotId: string, fn: (vars: V) => Promise<KeenonRob
   })
 }
 
+/** Read a floor's named points with y from the top of the image (or back). */
+export function useSetPointsFlipped(robotId: string) {
+  return useFloorMutation<{ floorId: string; flipped: boolean }>(robotId, ({ floorId, flipped }) =>
+    api<KeenonRobotFloor>(`/api/keenon/robot-floors/${floorId}/points-flipped`, { method: 'PUT', body: { flipped } }),
+  )
+}
+
 export interface CalibrationInput {
   scale: number
   rotation: number
