@@ -46,6 +46,7 @@ Node server in a container (server/)  ── service-role key ──▶  Supabas
    | `0005_keenon_position_alignment.sql` | Keenon reported position → map alignment |
    | `0006_vendor_event_details.sql` | Callback log: the URL that received each callback and our reply |
    | `0007_elevators.sql` | LiftMind connection, lifts, the floors they serve and the robots allowed to use them |
+   | `0008_keenon_points_flipped.sql` | Per Keenon floor: "named points are upside down" (y measured from the top; seen on the S100) |
 
    The files are safe to run again, so re-running one by mistake does no harm.
 
@@ -198,6 +199,8 @@ Set this up for each robot, from the whitelisted network. Start at **Vendors →
    Push the robot and check that the red dot follows it. Then save.
 4. **Calibrate.** Pair points on the Keenon map with the same spots on the app floor plan.
 5. The robot now appears on the **Map** page.
+
+**Named points upside down:** some robots' maps (seen on the S100) report named points with y measured from the top of the image. Their points then appear mirrored top-to-bottom, e.g. the charging pile far from where the aligned robot sits at home. Turn on **Named points are upside down** for that floor, on the robot's map page or the calibration page; the page suggests it when the charging pile or origin point is far from the robot's aligned home. Calibration pairs snapped to the old, upside-down points are wrong, so the calibration shows as out of date: redo its pairs.
 
 The alignment can change when a robot restarts or relocalizes. If a robot looks out of place, re-check that floor with **Align position → Track robot**. Admins see a "robots not on the map" note on the Map page that explains what's missing for each robot.
 

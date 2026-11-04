@@ -68,13 +68,18 @@ const CLEARED_CALIBRATION = {
 
 type FloorRow = Omit<KeenonRobotFloor, 'calibration_stale'> & { calib_map_hash: string | null }
 
-/** Fingerprint of the Keenon map a calibration was made against (image + point map versions). */
-function mapHash(row: Pick<FloorRow, 'map_png' | 'map_versions'>): string {
-  return createHash('sha256')
+/**
+ * Fingerprint of the Keenon map a calibration was made against (image + point map versions, and
+ * whether its points are read upside down). The flag only counts when on, so calibrations made
+ * before it existed keep their hash, and switching it back off makes them current again.
+ */
+export function mapHash(row: Pick<FloorRow, 'map_png' | 'map_versions' | 'points_flipped'>): string {
+  const hash = createHash('sha256')
     .update(row.map_png ?? '')
     .update('|')
     .update([...(row.map_versions ?? [])].sort().join(','))
-    .digest('hex')
+  if (row.points_flipped) hash.update('|points-flipped')
+  return hash.digest('hex')
 }
 
 function withCalibrationState(row: FloorRow): KeenonRobotFloor {
@@ -418,6 +423,21 @@ async function clearAlignment(floorRowId: string): Promise<Response> {
   return json(withCalibrationState(data as FloorRow))
 }
 
+/** Turn on/off reading this floor's named points with y from the top of the image. */
+async function setPointsFlipped(floorRowId: string, req: Request): Promise<Response> {
+  const { flipped } = await parseBody(req, z.object({ flipped: z.boolean() }))
+  if (!z.uuid().safeParse(floorRowId).success) throw new HttpError(404, 'Floor not found')
+  const { data, error } = await db()
+    .from('keenon_robot_floors')
+    .update({ points_flipped: flipped })
+    .eq('id', floorRowId)
+    .select('*')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new HttpError(404, 'Floor not found')
+  return json(withCalibrationState(data as FloorRow))
+}
+
 /** Just the robot's current position (much cheaper than full discovery). */
 async function locate(robotId: string): Promise<Response> {
   const robot = await loadRobot(robotId)
@@ -615,6 +635,10 @@ export default handler(async (req) => {
     if (req.method === 'PUT') return saveCalibration(id, req)
     if (req.method === 'DELETE') return clearCalibration(id)
     methodNotAllowed()
+  }
+  if (section === 'robot-floors' && id && action === 'points-flipped') {
+    if (req.method !== 'PUT') methodNotAllowed()
+    return setPointsFlipped(id, req)
   }
   if (section === 'robot-floors' && id && action === 'alignment') {
     if (req.method === 'PUT') return saveAlignment(id, req)
